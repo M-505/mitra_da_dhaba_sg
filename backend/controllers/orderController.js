@@ -83,6 +83,24 @@ exports.createOrder = async (req, res, next) => {
   }
 };
 
+exports.mergeOrders = async (req, res, next) => {
+  try {
+    const { parentId, childId } = req.params;
+    await orderModel.mergeOrders(parentId, childId);  
+    // Get updated parent order
+    const updatedOrder = await orderModel.getOrderById(parentId);
+    // Broadcast update
+    req.app.locals.broadcast({
+      type: 'orderUpdate',
+      payload: updatedOrder
+    });
+
+    res.json(updatedOrder);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // New method for handling order amendments
 exports.updateOrder = async (req, res, next) => {
   try {

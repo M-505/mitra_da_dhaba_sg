@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import {
@@ -12,8 +12,6 @@ import {
   Stack,
   Text,
   Button,
-  Badge,
-  useToast,
   Table,
   Thead,
   Tbody,
@@ -27,26 +25,17 @@ import {
   ModalBody,
   ModalCloseButton,
   useDisclosure,
-  Divider,
-  IconButton,
+  useToast,
+  Badge
 } from '@chakra-ui/react';
-import { DeleteIcon, MinusIcon, AddIcon } from '@chakra-ui/icons';
-
-const OrderStatus = {
-  PENDING: 'pending',
-  CONFIRMED: 'confirmed',
-  PREPARING: 'preparing',
-  COMPLETED: 'completed',
-  CANCELLED: 'cancelled'
-};
 
 const StatusBadge = ({ status }) => {
   const colorScheme = {
-    [OrderStatus.PENDING]: 'yellow',
-    [OrderStatus.CONFIRMED]: 'blue',
-    [OrderStatus.PREPARING]: 'purple',
-    [OrderStatus.COMPLETED]: 'green',
-    [OrderStatus.CANCELLED]: 'red',
+    pending: 'yellow',
+    confirmed: 'blue',
+    preparing: 'purple',
+    completed: 'green',
+    cancelled: 'red',
   }[status];
 
   return (
@@ -56,168 +45,96 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const ReceiptView = ({ order, onUpdateOrder }) => {
-  // DO NOT group or sum quantities - display exactly as received from database
-  const orderItems = order.items.map(item => ({
-    ...item,
-    id: item.id,            // from order_items.id
-    menu_item_id: item.menu_item_id,
-    name: item.name,
-    quantity: item.quantity // use exact quantity from database
-  }));
-
-  // Sort items by menu_item_id for consistent display
-  const sortedItems = orderItems.sort((a, b) => 
-    String(a.menu_item_id).localeCompare(String(b.menu_item_id))
-  );
-
-  const removeItem = (orderItemId) => {
-    const updatedItems = order.items.filter(item => item.id !== orderItemId);
-    if (updatedItems.length === 0) {
-      onUpdateOrder({
-        ...order,
-        items: [],
-        status: OrderStatus.CANCELLED,
-        total: 0
-      });
-    } else {
-      onUpdateOrder({
-        ...order,
-        items: updatedItems,
-        total: calculateOrderTotal(updatedItems)
-      });
-    }
-  };
-
-  const updateItemQuantity = (orderItemId, newQuantity) => {
-    if (newQuantity <= 0) {
-      removeItem(orderItemId);
-      return;
-    }
-
-    const updatedItems = order.items.map(item => {
-      if (item.id === orderItemId) {
-        return { ...item, quantity: newQuantity };
-      }
-      return item;
-    });
-
-    onUpdateOrder({
-      ...order,
-      items: updatedItems,
-      total: calculateOrderTotal(updatedItems)
-    });
-  };
-
+const ReceiptView = ({ order }) => {
   return (
-    <Box bg="white" p={6} fontFamily="monospace" width="350px" mx="auto">
-      {/* Receipt Header */}
-      <VStack spacing={1} align="center" mb={4}>
-        <Text fontWeight="bold">MITRA DA DHABA</Text>
-        <Text>46 Desker Road, #01-01</Text>
-        <Text>Singapore - 209577</Text>
-        <Text>Tel: +65 1234 5678</Text>
-      </VStack>
-
-      <Divider my={2} />
-
-      {/* Order Info */}
-      <HStack justify="space-between" mb={2}>
-        <Text>Order: #{order.id}</Text>
-        <Text>{new Date(order.timestamp || Date.now()).toLocaleString()}</Text>
-      </HStack>
-      <Text mb={2}>Table: {order.tableNumber}</Text>
-      <Text mb={2}>Status: <StatusBadge status={order.status || 'pending'} /></Text>
-
-      <Divider my={2} />
-
-      {/* Order Items */}
-      <VStack align="stretch" spacing={2} mb={4}>
-        {orderItems.map((item) => (
-          <Box key={item.id} p={2} borderWidth="1px" borderRadius="md">
-            <HStack justify="space-between" align="start">
-              <VStack align="start" spacing={0} flex={1}>
-                <HStack justify="space-between" width="100%">
-                  <Text fontWeight="bold">{`${item.quantity} x ${item.name}`}</Text>
-                  <Text>${(item.price * item.quantity).toFixed(2)}</Text>
-                </HStack>
-                {item.note && (
-                  <Text fontSize="sm" color="gray.600">
-                    Note: {item.note}
-                  </Text>
-                )}
-                <HStack mt={2}>
-                  <IconButton
-                    size="xs"
-                    icon={<MinusIcon />}
-                    onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
-                    aria-label="Decrease quantity"
-                  />
-                  <Text>{item.quantity}</Text>
-                  <IconButton
-                    size="xs"
-                    icon={<AddIcon />}
-                    onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
-                    aria-label="Increase quantity"
-                  />
-                  <IconButton
-                    size="xs"
-                    icon={<DeleteIcon />}
-                    colorScheme="red"
-                    onClick={() => removeItem(item.id)}
-                    aria-label="Remove item"
-                  />
-                </HStack>
-              </VStack>
-            </HStack>
-          </Box>
+    <VStack align="stretch" spacing={4}>
+      <Box>
+        <Text fontWeight="bold">Order #{order.id}</Text>
+        <Text>Table: {order.table_number}</Text>
+        <Text>Status: <StatusBadge status={order.status || 'pending'} /></Text>
+      </Box>
+      
+      <Box>
+        <Text fontWeight="bold" mb={2}>Items:</Text>
+        {order.items?.map((item, index) => (
+          <HStack key={index} justify="space-between" mb={2}>
+            <VStack align="start" spacing={0}>
+              <Text>{item.quantity}x {item.name}</Text>
+              {item.note && (
+                <Text fontSize="sm" color="gray.600">Note: {item.note}</Text>
+              )}
+            </VStack>
+            <Text>${(item.price * item.quantity).toFixed(2)}</Text>
+          </HStack>
         ))}
-      </VStack>
+      </Box>
 
-      {/* Totals */}
-      <VStack align="stretch" spacing={1}>
+      <Box borderTopWidth={1} pt={4}>
         <HStack justify="space-between">
           <Text>Subtotal:</Text>
-          <Text>${order.total?.toFixed(2)}</Text>
+          <Text>${parseFloat(order.total_amount || 0).toFixed(2)}</Text>
         </HStack>
         <HStack justify="space-between">
           <Text>GST (8%):</Text>
-          <Text>${(order.total * 0.08).toFixed(2)}</Text>
+          <Text>${((order.total_amount || 0) * 0.08).toFixed(2)}</Text>
         </HStack>
         <HStack justify="space-between" fontWeight="bold">
           <Text>Total:</Text>
-          <Text>${(order.total * 1.08).toFixed(2)}</Text>
+          <Text>${((order.total_amount || 0) * 1.08).toFixed(2)}</Text>
         </HStack>
-      </VStack>
-
-      <Divider my={4} />
-
-      {/* Footer */}
-      <VStack spacing={1} align="center">
-        <Text>Thank You For Dining With Us!</Text>
-        <Text>Please Visit Again</Text>
-      </VStack>
-    </Box>
+      </Box>
+    </VStack>
   );
 };
 
 export default function CashierDashboard() {
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selectedParentOrder, setSelectedParentOrder] = useState(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
   const ws = useRef(null);
 
-  const calculateOrderTotal = (items) => {
-    if (!items || !Array.isArray(items)) return 0;
-    return items.reduce((sum, item) => {
-      return sum + (item.price * item.quantity);
-    }, 0);
+  useEffect(() => {
+    fetchOrders();
+    setupWebSocket();
+
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, []);
+
+  const setupWebSocket = () => {
+    ws.current = new WebSocket('ws://localhost:3001');
+
+    ws.current.onopen = () => {
+      console.log('WebSocket Connected');
+    };
+
+    ws.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'newOrder' || data.type === 'orderUpdate') {
+          fetchOrders();
+        }
+      } catch (error) {
+        console.error('WebSocket message error:', error);
+      }
+    };
+
+    ws.current.onclose = () => {
+      console.log('WebSocket Disconnected');
+      setTimeout(setupWebSocket, 3000);
+    };
   };
 
   const fetchOrders = async () => {
     try {
       const response = await fetch('http://localhost:3001/api/orders');
+      if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
       setOrders(data);
     } catch (error) {
@@ -231,9 +148,80 @@ export default function CashierDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  const handleOrderConfirm = async (order) => {
+    try {
+      if (mergeMode && selectedParentOrder) {
+        // Merging order
+        const response = await fetch(
+          `http://localhost:3001/api/orders/${selectedParentOrder.id}/merge/${order.id}`,
+          { 
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              sourceTable: order.table_number,
+              targetTable: selectedParentOrder.table_number
+            })
+          }
+        );
+  
+        if (!response.ok) throw new Error('Failed to merge orders');
+  
+        toast({
+          title: 'Orders Merged',
+          description: `Order #${order.id} merged with Order #${selectedParentOrder.id}`,
+          status: 'success',
+          duration: 3000,
+        });
+  
+        setMergeMode(false);
+        setSelectedParentOrder(null);
+      } else {
+        // Regular confirm
+        await updateOrderStatus(order.id, 'confirmed');
+      }
+  
+      await fetchOrders();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+      });
+    }
+  };
+
+  const updateOrderStatus = async (orderId, status) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update order status');
+
+      await fetchOrders();
+
+      toast({
+        title: 'Order Updated',
+        description: `Order #${orderId} status updated to ${status}`,
+        status: 'success',
+        duration: 3000,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update order status',
+        status: 'error',
+        duration: 3000,
+      });
+    }
+  };
 
   const viewOrderDetails = (order) => {
     setSelectedOrder(order);
@@ -243,7 +231,20 @@ export default function CashierDashboard() {
   return (
     <Container maxW="container.xl" py={8}>
       <VStack spacing={6} align="stretch">
-        <Heading>Cashier Dashboard</Heading>
+        <HStack justify="space-between">
+          <Heading>Cashier Dashboard</Heading>
+          {mergeMode && (
+            <Button 
+              colorScheme="orange" 
+              onClick={() => {
+                setMergeMode(false);
+                setSelectedParentOrder(null);
+              }}
+            >
+              Cancel Merge Mode
+            </Button>
+          )}
+        </HStack>
 
         <Card>
           <CardBody>
@@ -258,49 +259,88 @@ export default function CashierDashboard() {
                 </Tr>
               </Thead>
               <Tbody>
-                {orders.map((order) => (
-                  <Tr key={order.id}>
-                    <Td>#{order.id}</Td>
-                    <Td>Table {order.table_number}</Td>
-                    <Td>${order.total_amount?.toFixed(2) || '0.00'}</Td>
-                    <Td><StatusBadge status={order.status || 'pending'} /></Td>
-                    <Td>
-                      <Stack direction="row" spacing={2}>
-                        <Button
-                          size="sm"
-                          onClick={() => viewOrderDetails(order)}
-                        >
-                          View
-                        </Button>
-                        {(!order.status || order.status === 'pending') && (
-                          <>
-                            <Button
-                              size="sm"
-                              colorScheme="green"
-                              onClick={() => updateOrderStatus(order.id, 'confirmed')}
-                            >
-                              Confirm
-                            </Button>
-                            <Button
-                              size="sm"
-                              colorScheme="red"
-                              onClick={() => updateOrderStatus(order.id, 'cancelled')}
-                            >
-                              Cancel
-                            </Button>
-                          </>
-                        )}
-                      </Stack>
-                    </Td>
-                  </Tr>
-                ))}
+              {orders.map((order) => (
+  <Tr 
+    key={order.id}
+    bg={
+      mergeMode && 
+      selectedParentOrder?.table_number === order.table_number && 
+      selectedParentOrder.id !== order.id
+        ? 'blue.50'
+        : undefined
+    }
+  >
+    <Td>#{order.id}</Td>
+    <Td>Table {order.table_number}</Td>
+    <Td>${(parseFloat(order.total_amount) || 0).toFixed(2)}</Td>
+    <Td><StatusBadge status={order.status || 'pending'} /></Td>
+    <Td>
+      <Stack direction="row" spacing={2}>
+        <Button
+          size="sm"
+          onClick={() => viewOrderDetails(order)}
+        >
+          View
+        </Button>
+
+        {order.status === 'confirmed' && (
+          <Button
+            size="sm"
+            colorScheme={mergeMode ? 'gray' : 'blue'}
+            onClick={() => {
+              if (!mergeMode) {
+                setMergeMode(true);
+                setSelectedParentOrder(order);
+              }
+            }}
+            disabled={mergeMode && selectedParentOrder?.id !== order.id}
+          >
+            {mergeMode && selectedParentOrder?.id === order.id ? 'Select Order to Merge' : 'Merge Orders'}
+          </Button>
+        )}
+
+        {order.status === 'pending' && (
+          <>
+            {mergeMode ? (
+              selectedParentOrder && selectedParentOrder.table_number === order.table_number && (
+                <Button
+                  size="sm"
+                  colorScheme="green"
+                  onClick={() => handleOrderConfirm(order)}
+                >
+                  Merge into #{selectedParentOrder.id}
+                </Button>
+              )
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  colorScheme="green"
+                  onClick={() => handleOrderConfirm(order)}
+                >
+                  Confirm
+                </Button>
+                <Button
+                  size="sm"
+                  colorScheme="red"
+                  onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                >
+                  Cancel
+                </Button>
+              </>
+            )}
+          </>
+        )}
+      </Stack>
+    </Td>
+  </Tr>
+))}
               </Tbody>
             </Table>
           </CardBody>
         </Card>
       </VStack>
 
-      {/* Receipt Modal */}
       <Modal isOpen={isOpen} onClose={onClose} size="md">
         <ModalOverlay />
         <ModalContent>

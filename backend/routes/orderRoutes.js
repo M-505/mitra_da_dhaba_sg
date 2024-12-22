@@ -7,5 +7,6 @@ router.get('/:id', orderController.getOrderById);
 router.post('/', orderController.createOrder);
 router.patch('/:id/status', orderController.updateOrderStatus);
 router.patch('/:id', orderController.updateOrder);  // New route for general updates
+router.post('/:parentId/merge/:childId', orderController.mergeOrders);
 
 module.exports = router;
