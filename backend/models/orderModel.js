@@ -9,7 +9,6 @@ exports.getAllOrders = async () => {
         o.table_number, 
         o.total_amount, 
         o.status,
-        o.parent_order_id,
         JSON_ARRAYAGG(
           JSON_OBJECT(
             'id', oi.id,
@@ -18,24 +17,55 @@ exports.getAllOrders = async () => {
             'quantity', oi.quantity,
             'price', oi.price_at_time
           )
-        ) as items
+        ) as items,
+        (
+          SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+              'id', child.id,
+              'table_number', child.table_number,
+              'total_amount', child.total_amount,
+              'status', child.status,
+              'items', (
+                SELECT JSON_ARRAYAGG(
+                  JSON_OBJECT(
+                    'id', coi.id,
+                    'menu_item_id', cmi.id,
+                    'name', cmi.name,
+                    'quantity', coi.quantity,
+                    'price', coi.price_at_time
+                  )
+                )
+                FROM order_items coi
+                JOIN menu_items cmi ON coi.menu_item_id = cmi.id
+                WHERE coi.order_id = child.id
+              )
+            )
+          )
+          FROM orders child
+          WHERE child.parent_order_id = o.id
+        ) as childOrders
       FROM orders o
-      JOIN order_items oi ON o.id = oi.order_id
-      JOIN menu_items mi ON oi.menu_item_id = mi.id
-      WHERE o.parent_order_id IS NULL  -- Only get parent orders
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
+      WHERE o.parent_order_id IS NULL -- Fetch only parent orders
       GROUP BY o.id
       ORDER BY o.id DESC
     `);
+
     return rows;
   } catch (err) {
     throw new Error('Failed to retrieve orders');
   }
 };
   
-  exports.getOrderById = async (id) => {
-    try {
-      const [rows] = await db.query(`
-        SELECT o.id, o.table_number, o.total_amount, o.status,
+exports.getOrderById = async (id) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        o.id, 
+        o.table_number, 
+        o.total_amount, 
+        o.status,
         JSON_ARRAYAGG(
           JSON_OBJECT(
             'id', oi.id,           -- order_items id
@@ -45,17 +75,18 @@ exports.getAllOrders = async () => {
             'price', oi.price_at_time
           )
         ) as items
-        FROM orders o
-        JOIN order_items oi ON o.id = oi.order_id
-        JOIN menu_items mi ON oi.menu_item_id = mi.id
-        WHERE o.id = ?
-        GROUP BY o.id
-      `, [id]);
-      return rows[0] || null;
-    } catch (err) {
-      throw new Error('Failed to retrieve order');
-    }
-  };
+      FROM orders o
+      JOIN order_items oi ON o.id = oi.order_id
+      JOIN menu_items mi ON oi.menu_item_id = mi.id
+      WHERE o.id = ? OR o.parent_order_id = ? -- Include parent and child orders
+      GROUP BY o.id
+    `, [id, id]);
+    return rows[0] || null;
+  } catch (err) {
+    throw new Error('Failed to retrieve order');
+  }
+};
+
 
   exports.createOrder = async (tableNumber, items) => {
     let totalAmount = 0;

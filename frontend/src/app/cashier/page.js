@@ -29,23 +29,26 @@ import {
   Badge
 } from '@chakra-ui/react';
 
-const StatusBadge = ({ status }) => {
+const StatusBadge = ({ status, isMerged }) => {
   const colorScheme = {
     pending: 'yellow',
     confirmed: 'blue',
     preparing: 'purple',
     completed: 'green',
     cancelled: 'red',
+    merged: 'gray',
   }[status];
 
   return (
     <Badge colorScheme={colorScheme}>
-      {status.toUpperCase()}
+      {isMerged ? 'MERGED' : status.toUpperCase()}
     </Badge>
   );
 };
 
 const ReceiptView = ({ order }) => {
+  const allItems = [...(order.items || []), ...(order.childOrders || []).flatMap(child => child.items || [])];
+  
   return (
     <VStack align="stretch" spacing={4}>
       <Box>
@@ -53,10 +56,10 @@ const ReceiptView = ({ order }) => {
         <Text>Table: {order.table_number}</Text>
         <Text>Status: <StatusBadge status={order.status || 'pending'} /></Text>
       </Box>
-      
+
       <Box>
         <Text fontWeight="bold" mb={2}>Items:</Text>
-        {order.items?.map((item, index) => (
+        {allItems.map((item, index) => (
           <HStack key={index} justify="space-between" mb={2}>
             <VStack align="start" spacing={0}>
               <Text>{item.quantity}x {item.name}</Text>
@@ -117,6 +120,7 @@ export default function CashierDashboard() {
     ws.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('WebSocket Update:', data); // Debugging WebSocket updates
         if (data.type === 'newOrder' || data.type === 'orderUpdate') {
           fetchOrders();
         }
@@ -136,6 +140,7 @@ export default function CashierDashboard() {
       const response = await fetch('http://localhost:3001/api/orders');
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
+      console.log('Fetched Orders:', data); // Debugging fetched orders
       setOrders(data);
     } catch (error) {
       console.error('Failed to fetch orders:', error);
@@ -151,38 +156,27 @@ export default function CashierDashboard() {
   const handleOrderConfirm = async (order) => {
     try {
       if (mergeMode && selectedParentOrder) {
-        // Merging order
         const response = await fetch(
           `http://localhost:3001/api/orders/${selectedParentOrder.id}/merge/${order.id}`,
-          { 
+          {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              sourceTable: order.table_number,
-              targetTable: selectedParentOrder.table_number
-            })
+            headers: { 'Content-Type': 'application/json' },
           }
         );
-  
         if (!response.ok) throw new Error('Failed to merge orders');
-  
         toast({
           title: 'Orders Merged',
-          description: `Order #${order.id} merged with Order #${selectedParentOrder.id}`,
+          description: `Order #${order.id} merged into #${selectedParentOrder.id}`,
           status: 'success',
           duration: 3000,
         });
-  
         setMergeMode(false);
         setSelectedParentOrder(null);
+        await fetchOrders();
       } else {
-        // Regular confirm
         await updateOrderStatus(order.id, 'confirmed');
+        await fetchOrders();
       }
-  
-      await fetchOrders();
     } catch (error) {
       toast({
         title: 'Error',
@@ -197,9 +191,7 @@ export default function CashierDashboard() {
     try {
       const response = await fetch(`http://localhost:3001/api/orders/${orderId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
 
@@ -259,82 +251,87 @@ export default function CashierDashboard() {
                 </Tr>
               </Thead>
               <Tbody>
-              {orders.map((order) => (
-  <Tr 
-    key={order.id}
-    bg={
-      mergeMode && 
-      selectedParentOrder?.table_number === order.table_number && 
-      selectedParentOrder.id !== order.id
-        ? 'blue.50'
-        : undefined
-    }
-  >
-    <Td>#{order.id}</Td>
-    <Td>Table {order.table_number}</Td>
-    <Td>${(parseFloat(order.total_amount) || 0).toFixed(2)}</Td>
-    <Td><StatusBadge status={order.status || 'pending'} /></Td>
-    <Td>
-      <Stack direction="row" spacing={2}>
-        <Button
-          size="sm"
-          onClick={() => viewOrderDetails(order)}
-        >
-          View
-        </Button>
+                {orders.map((order) => (
+                  <Tr 
+                    key={order.id}
+                    bg={
+                      mergeMode && 
+                      selectedParentOrder?.table_number === order.table_number && 
+                      selectedParentOrder.id !== order.id
+                        ? 'blue.50'
+                        : undefined
+                    }
+                  >
+                    <Td>#{order.id}</Td>
+                    <Td>Table {order.table_number}</Td>
+                    <Td>${(parseFloat(order.total_amount) || 0).toFixed(2)}</Td>
+                    <Td>
+                      <StatusBadge 
+                        status={order.status || 'pending'} 
+                        isMerged={order.status === 'merged'} 
+                      />
+                    </Td>
+                    <Td>
+                      <Stack direction="row" spacing={2}>
+                        <Button
+                          size="sm"
+                          onClick={() => viewOrderDetails(order)}
+                        >
+                          View
+                        </Button>
 
-        {order.status === 'confirmed' && (
-          <Button
-            size="sm"
-            colorScheme={mergeMode ? 'gray' : 'blue'}
-            onClick={() => {
-              if (!mergeMode) {
-                setMergeMode(true);
-                setSelectedParentOrder(order);
-              }
-            }}
-            disabled={mergeMode && selectedParentOrder?.id !== order.id}
-          >
-            {mergeMode && selectedParentOrder?.id === order.id ? 'Select Order to Merge' : 'Merge Orders'}
-          </Button>
-        )}
+                        {order.status === 'confirmed' && (
+                          <Button
+                            size="sm"
+                            colorScheme={mergeMode ? 'gray' : 'blue'}
+                            onClick={() => {
+                              if (!mergeMode) {
+                                setMergeMode(true);
+                                setSelectedParentOrder(order);
+                              }
+                            }}
+                            disabled={mergeMode && selectedParentOrder?.id !== order.id}
+                          >
+                            {mergeMode && selectedParentOrder?.id === order.id ? 'Select Order to Merge' : 'Merge Orders'}
+                          </Button>
+                        )}
 
-        {order.status === 'pending' && (
-          <>
-            {mergeMode ? (
-              selectedParentOrder && selectedParentOrder.table_number === order.table_number && (
-                <Button
-                  size="sm"
-                  colorScheme="green"
-                  onClick={() => handleOrderConfirm(order)}
-                >
-                  Merge into #{selectedParentOrder.id}
-                </Button>
-              )
-            ) : (
-              <>
-                <Button
-                  size="sm"
-                  colorScheme="green"
-                  onClick={() => handleOrderConfirm(order)}
-                >
-                  Confirm
-                </Button>
-                <Button
-                  size="sm"
-                  colorScheme="red"
-                  onClick={() => updateOrderStatus(order.id, 'cancelled')}
-                >
-                  Cancel
-                </Button>
-              </>
-            )}
-          </>
-        )}
-      </Stack>
-    </Td>
-  </Tr>
-))}
+                        {order.status === 'pending' && (
+                          <>
+                            {mergeMode ? (
+                              selectedParentOrder && selectedParentOrder.table_number === order.table_number && (
+                                <Button
+                                  size="sm"
+                                  colorScheme="green"
+                                  onClick={() => handleOrderConfirm(order)}
+                                >
+                                  Merge into #{selectedParentOrder.id}
+                                </Button>
+                              )
+                            ) : (
+                              <>
+                                <Button
+                                  size="sm"
+                                  colorScheme="green"
+                                  onClick={() => handleOrderConfirm(order)}
+                                >
+                                  Confirm
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  colorScheme="red"
+                                  onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                                >
+                                  Cancel
+                                </Button>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </Stack>
+                    </Td>
+                  </Tr>
+                ))}
               </Tbody>
             </Table>
           </CardBody>
