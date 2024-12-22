@@ -37,6 +37,7 @@ const StatusBadge = ({ status, isMerged }) => {
     completed: 'green',
     cancelled: 'red',
     merged: 'gray',
+    paid: 'teal'
   }[status];
 
   return (
@@ -46,47 +47,145 @@ const StatusBadge = ({ status, isMerged }) => {
   );
 };
 
+const printReceipt = (order) => {
+  const printWindow = window.open('', '_blank');
+  const allItems = [...(order.items || []), ...(order.childOrders || []).flatMap(child => child.items || [])];
+  const subtotal = parseFloat(order.total_amount || 0);
+  const tax = subtotal * 0.09;
+  const total = subtotal + tax;
+  
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Receipt - Order #${order.id}</title>
+        <style>
+          body {
+            font-family: monospace;
+            font-size: 12px;
+            padding: 20px;
+            width: 300px;
+            margin: 0 auto;
+          }
+          .center { text-align: center; }
+          .mb-2 { margin-bottom: 8px; }
+          .mb-4 { margin-bottom: 16px; }
+          .border-top { border-top: 1px solid black; padding-top: 8px; }
+          .flex { display: flex; justify-content: space-between; }
+          .bold { font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="center mb-4">
+          <div class="bold">MITRA DA DHABA</div>
+          <div>46 Desker Road, #01-01</div>
+          <div>Singapore - 209577</div>
+          <div>Tel: +65 1234 5678</div>
+        </div>
+
+        <div class="flex mb-2">
+          <div>Order: #${order.id}</div>
+          <div>${new Date().toLocaleString()}</div>
+        </div>
+
+        <div class="mb-4">Table: ${order.table_number}</div>
+
+        ${allItems.map(item => `
+          <div class="flex">
+            <div>${item.quantity} ${item.name}</div>
+            <div>$${(item.price * item.quantity).toFixed(2)}</div>
+          </div>
+          ${item.note ? `<div style="font-size: 10px; color: #666;">Note: ${item.note}</div>` : ''}
+        `).join('')}
+
+        <div class="border-top">
+          <div class="flex">
+            <div>Subtotal:</div>
+            <div>$${subtotal.toFixed(2)}</div>
+          </div>
+          <div class="flex">
+            <div>GST (9%):</div>
+            <div>$${tax.toFixed(2)}</div>
+          </div>
+          <div class="flex bold">
+            <div>Total:</div>
+            <div>$${total.toFixed(2)}</div>
+          </div>
+        </div>
+
+        <div class="center" style="margin-top: 20px;">
+          <div>Thank You For Dining With Us!</div>
+          <div>Please Visit Again</div>
+        </div>
+      </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+  printWindow.close();
+};
+
 const ReceiptView = ({ order }) => {
   const allItems = [...(order.items || []), ...(order.childOrders || []).flatMap(child => child.items || [])];
+  const subtotal = parseFloat(order.total_amount || 0);
+  const tax = subtotal * 0.09;
+  const total = subtotal + tax;
   
   return (
-    <VStack align="stretch" spacing={4}>
-      <Box>
-        <Text fontWeight="bold">Order #{order.id}</Text>
-        <Text>Table: {order.table_number}</Text>
-        <Text>Status: <StatusBadge status={order.status || 'pending'} /></Text>
-      </Box>
+    <Box
+      fontFamily="monospace"
+      width="300px"
+      margin="0 auto"
+    >
+      <VStack spacing={1} align="center" mb={4}>
+        <Text fontWeight="bold">MITRA DA DHABA</Text>
+        <Text>46 Desker Road, #01-01</Text>
+        <Text>Singapore - 209577</Text>
+        <Text>Tel: +65 1234 5678</Text>
+      </VStack>
 
-      <Box>
-        <Text fontWeight="bold" mb={2}>Items:</Text>
+      <HStack justify="space-between" mb={2}>
+        <Text>Order: #{order.id}</Text>
+        <Text>{new Date().toLocaleString()}</Text>
+      </HStack>
+
+      <Text mb={4}>Table: {order.table_number}</Text>
+
+      <VStack align="stretch" spacing={2} mb={4}>
         {allItems.map((item, index) => (
-          <HStack key={index} justify="space-between" mb={2}>
-            <VStack align="start" spacing={0}>
-              <Text>{item.quantity}x {item.name}</Text>
-              {item.note && (
-                <Text fontSize="sm" color="gray.600">Note: {item.note}</Text>
-              )}
-            </VStack>
-            <Text>${(item.price * item.quantity).toFixed(2)}</Text>
-          </HStack>
+          <Box key={index}>
+            <HStack justify="space-between">
+              <Text>{item.quantity} {item.name}</Text>
+              <Text>${(item.price * item.quantity).toFixed(2)}</Text>
+            </HStack>
+            {item.note && (
+              <Text fontSize="sm" color="gray.600">Note: {item.note}</Text>
+            )}
+          </Box>
         ))}
-      </Box>
+      </VStack>
 
-      <Box borderTopWidth={1} pt={4}>
+      <Box borderTopWidth={1} pt={2}>
         <HStack justify="space-between">
           <Text>Subtotal:</Text>
-          <Text>${parseFloat(order.total_amount || 0).toFixed(2)}</Text>
+          <Text>${subtotal.toFixed(2)}</Text>
         </HStack>
         <HStack justify="space-between">
-          <Text>GST (8%):</Text>
-          <Text>${((order.total_amount || 0) * 0.08).toFixed(2)}</Text>
+          <Text>GST (9%):</Text>
+          <Text>${tax.toFixed(2)}</Text>
         </HStack>
         <HStack justify="space-between" fontWeight="bold">
           <Text>Total:</Text>
-          <Text>${((order.total_amount || 0) * 1.08).toFixed(2)}</Text>
+          <Text>${total.toFixed(2)}</Text>
         </HStack>
       </Box>
-    </VStack>
+
+      <VStack spacing={1} align="center" mt={4}>
+        <Text>Thank You For Dining With Us!</Text>
+        <Text>Please Visit Again</Text>
+      </VStack>
+    </Box>
   );
 };
 
@@ -120,7 +219,7 @@ export default function CashierDashboard() {
     ws.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('WebSocket Update:', data); // Debugging WebSocket updates
+        console.log('WebSocket Update:', data);
         if (data.type === 'newOrder' || data.type === 'orderUpdate') {
           fetchOrders();
         }
@@ -140,13 +239,48 @@ export default function CashierDashboard() {
       const response = await fetch('http://localhost:3001/api/orders');
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
-      console.log('Fetched Orders:', data); // Debugging fetched orders
+      console.log('Fetched Orders:', data);
       setOrders(data);
     } catch (error) {
       console.error('Failed to fetch orders:', error);
       toast({
         title: 'Error',
         description: 'Failed to fetch orders',
+        status: 'error',
+        duration: 3000,
+      });
+    }
+  };
+
+  const handlePayment = async (order) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/orders/${order.id}/payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: 'paid',
+          table_number: order.table_number
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to process payment');
+
+      printReceipt(order);
+      await fetchOrders();
+
+      toast({
+        title: 'Payment Complete',
+        description: 'Receipt has been printed and table is now available',
+        status: 'success',
+        duration: 3000,
+      });
+
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to process payment: ' + error.message,
         status: 'error',
         duration: 3000,
       });
@@ -280,23 +414,32 @@ export default function CashierDashboard() {
                           View
                         </Button>
 
-                        {order.status === 'confirmed' && (
-                          <Button
-                            size="sm"
-                            colorScheme={mergeMode ? 'gray' : 'blue'}
-                            onClick={() => {
-                              if (!mergeMode) {
-                                setMergeMode(true);
-                                setSelectedParentOrder(order);
-                              }
-                            }}
-                            disabled={mergeMode && selectedParentOrder?.id !== order.id}
-                          >
-                            {mergeMode && selectedParentOrder?.id === order.id ? 'Select Order to Merge' : 'Merge Orders'}
-                          </Button>
+                        {order.status === 'confirmed' && !order.parent_order_id && (
+                          <>
+                            <Button
+                              size="sm"
+                              colorScheme={mergeMode ? 'gray' : 'blue'}
+                              onClick={() => {
+                                if (!mergeMode) {
+                                  setMergeMode(true);
+                                  setSelectedParentOrder(order);
+                                }
+                              }}
+                              disabled={mergeMode && selectedParentOrder?.id !== order.id}
+                            >
+                              {mergeMode && selectedParentOrder?.id === order.id ? 'Select Order to Merge' : 'Merge Orders'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              colorScheme="green"
+                              onClick={() => handlePayment(order)}
+                            >
+                              Paid
+                            </Button>
+                          </>
                         )}
 
-                        {order.status === 'pending' && (
+                        {order.status === 'pending' && !order.parent_order_id && (
                           <>
                             {mergeMode ? (
                               selectedParentOrder && selectedParentOrder.table_number === order.table_number && (

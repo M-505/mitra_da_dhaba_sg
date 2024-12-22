@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 import { useState, useEffect } from 'react';
 import {
@@ -39,105 +39,89 @@ import {
   TagLeftIcon,
   TagLabel,
 } from '@chakra-ui/react';
-import {
-  SearchIcon,
-  DeleteIcon,
-  InfoIcon,
-  StarIcon,
-  WarningIcon
-} from '@chakra-ui/icons';
+import { SearchIcon, DeleteIcon, StarIcon, WarningIcon } from '@chakra-ui/icons';
+import { MdWhatshot } from 'react-icons/md';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const MotionCard = motion(Card);
 const MotionSimpleGrid = motion(SimpleGrid);
 
-// Food Indicator Component
-const FoodIndicator = ({ isSpicy, isVeg, isRecommended }) => {
-  return (
-    <HStack spacing={2}>
-      {isSpicy && (
-        <Tooltip label="Spicy">
-          <Tag size="sm" colorScheme="red">
-            <TagLeftIcon as={WarningIcon} />
-            <TagLabel>Spicy</TagLabel>
-          </Tag>
-        </Tooltip>
-      )}
-      {isVeg && (
-        <Tooltip label="Vegetarian">
-          <Tag size="sm" colorScheme="green">
-            <TagLeftIcon boxSize="12px" as={() => (
-              <span style={{ fontSize: '16px' }}>🥬</span>
-            )} />
-            <TagLabel>Veg</TagLabel>
-          </Tag>
-        </Tooltip>
-      )}
-      {isRecommended && (
-        <Tooltip label="Chef's Recommendation">
-          <Tag size="sm" colorScheme="purple">
-            <TagLeftIcon as={StarIcon} />
-            <TagLabel>Chef's Special</TagLabel>
-          </Tag>
-        </Tooltip>
-      )}
-    </HStack>
-  );
+const customHeading = {
+  fontFamily: `'Mukta', sans-serif`,
+  textShadow: '2px 2px 6px rgba(0, 0, 0, 0.8)',
 };
 
-// Cart Item Component
-const CartItem = ({ item, updateQuantity, removeFromCart, updateNote }) => {
-  return (
-    <Card variant="outline">
-      <CardBody>
-        <VStack align="stretch" spacing={3}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Box flex="1">
-              <Heading size="sm">{item.name}</Heading>
-              <Text color="blue.600">
-                ${parseFloat(item.price * item.quantity).toFixed(2)}
-              </Text>
-              <FoodIndicator
-                isSpicy={item.isSpicy}
-                isVeg={item.isVeg}
-                isRecommended={item.isRecommended}
-              />
-            </Box>
-            <HStack>
-              <Button
-                size="sm"
-                onClick={() => updateQuantity(item.id, item.quantity - 1)}
-              >
-                -
-              </Button>
-              <Text>{item.quantity}</Text>
-              <Button
-                size="sm"
-                onClick={() => updateQuantity(item.id, item.quantity + 1)}
-              >
-                +
-              </Button>
-              <IconButton
-                icon={<DeleteIcon />}
-                onClick={() => removeFromCart(item.id)}
-                colorScheme="red"
-                variant="ghost"
-                size="sm"
-              />
-            </HStack>
-          </Stack>
-          <Textarea
-            placeholder="Special instructions (allergies, spice level, etc.)"
-            size="sm"
-            value={item.note || ''}
-            onChange={(e) => updateNote(item.id, e.target.value)}
-            resize="none"
-          />
-        </VStack>
-      </CardBody>
-    </Card>
-  );
-};
+const FoodIndicator = ({ isSpicy, isVeg, isRecommended }) => (
+  <HStack spacing={2}>
+    {isSpicy && (
+      <Tooltip label="Spicy">
+        <Tag size="sm" colorScheme="red">
+          <TagLeftIcon as={MdWhatshot} />
+          <TagLabel>Spicy</TagLabel>
+        </Tag>
+      </Tooltip>
+    )}
+    {isVeg && (
+      <Tooltip label="Vegetarian">
+        <Tag size="sm" colorScheme="green">
+          <TagLeftIcon as={() => <span>🥬</span>} />
+          <TagLabel>Veg</TagLabel>
+        </Tag>
+      </Tooltip>
+    )}
+    {isRecommended && (
+      <Tooltip label="Chef's Recommendation">
+        <Tag size="sm" colorScheme="purple">
+          <TagLeftIcon as={StarIcon} />
+          <TagLabel>Chef's Special</TagLabel>
+        </Tag>
+      </Tooltip>
+    )}
+  </HStack>
+);
+
+const CartItem = ({ item, updateQuantity, removeFromCart, updateNote }) => (
+  <Card variant="outline" bg="rgba(0, 0, 0, 0.7)" color="white">
+    <CardBody>
+      <VStack align="stretch" spacing={3}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Box flex="1">
+            <Heading size="sm">{item.name}</Heading>
+            <Text>${parseFloat(item.price * item.quantity || 0).toFixed(2)}</Text>
+            <FoodIndicator
+              isSpicy={item.isSpicy}
+              isVeg={item.isVeg}
+              isRecommended={item.isRecommended}
+            />
+          </Box>
+          <HStack>
+            <Button size="sm" onClick={() => updateQuantity(item.id, item.quantity - 1)}>
+              -
+            </Button>
+            <Text>{item.quantity}</Text>
+            <Button size="sm" onClick={() => updateQuantity(item.id, item.quantity + 1)}>
+              +
+            </Button>
+            <IconButton
+              icon={<DeleteIcon />}
+              onClick={() => removeFromCart(item.id)}
+              colorScheme="red"
+              variant="ghost"
+              size="sm"
+            />
+          </HStack>
+        </Stack>
+        <Textarea
+          placeholder="Special instructions (e.g., allergies, spice level)"
+          size="sm"
+          value={item.note || ''}
+          onChange={(e) => updateNote(item.id, e.target.value)}
+          resize="none"
+        />
+      </VStack>
+    </CardBody>
+  </Card>
+);
 
 export default function Home() {
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -161,7 +145,12 @@ export default function Home() {
       const data = await res.json();
       const categoryMap = {};
       data.forEach((item) => {
+        item.price = parseFloat(item.price || 0);
         if (item.is_available) {
+          // Add default values if not present in the data
+          item.is_spicy = item.is_spicy || false;
+          item.is_recommended = item.is_recommended || false;
+          
           if (!categoryMap[item.category_id]) {
             categoryMap[item.category_id] = [];
           }
@@ -177,7 +166,6 @@ export default function Home() {
         description: 'Please try again later',
         status: 'error',
         duration: 3000,
-        isClosable: true,
       });
     } finally {
       setIsLoading(false);
@@ -203,7 +191,7 @@ export default function Home() {
   };
 
   const removeFromCart = (itemId) => {
-    setCart(prevCart => prevCart.filter(item => item.id !== itemId));
+    setCart((prevCart) => prevCart.filter((item) => item.id !== itemId));
   };
 
   const updateQuantity = (itemId, newQuantity) => {
@@ -211,67 +199,80 @@ export default function Home() {
       removeFromCart(itemId);
       return;
     }
-    setCart(prevCart =>
-      prevCart.map(item =>
+    setCart((prevCart) =>
+      prevCart.map((item) =>
         item.id === itemId ? { ...item, quantity: newQuantity } : item
       )
     );
   };
 
   const updateNote = (itemId, note) => {
-    setCart(prevCart =>
-      prevCart.map(item =>
+    setCart((prevCart) =>
+      prevCart.map((item) =>
         item.id === itemId ? { ...item, note } : item
       )
     );
   };
 
-  const filteredMenuItems = searchTerm
-    ? Object.values(menuItems).flat().filter(item =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.description.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : menuItems[activeCategory] || [];
-
-  const cartTotal = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
-
   const placeOrder = async () => {
     try {
+      // Prepare order data
       const orderData = {
-        tableNumber,
-        items: cart,
-        total: cartTotal,
-        status: 'pending',
-        timestamp: new Date().toISOString()
+        tableNumber: tableNumber,
+        items: cart.map(item => ({
+          id: item.id,        // menu_item_id
+          quantity: item.quantity,
+          note: item.note || null
+        }))
       };
-
+  
+      // Send order to backend
       const response = await fetch('http://localhost:3001/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(orderData),
+        body: JSON.stringify(orderData)
       });
-
-      if (!response.ok) throw new Error('Failed to place order');
-
+  
+      if (!response.ok) {
+        throw new Error('Failed to place order');
+      }
+  
+      // Show success message
       toast({
-        title: 'Order Placed Successfully',
-        description: 'Your order has been sent to the cashier',
+        title: 'Order placed!',
+        description: `Your order has been sent to the cashier.`,
         status: 'success',
         duration: 3000,
       });
-      onClose();
+  
+      // Clear cart and close drawer
       setCart([]);
-    } catch (error) {
+      onClose();
+  
+    } catch (err) {
+      console.error('Order error:', err);
       toast({
-        title: 'Error',
+        title: 'Order failed',
         description: 'Failed to place order. Please try again.',
         status: 'error',
         duration: 3000,
       });
     }
   };
+
+  const filteredMenuItems = searchTerm
+    ? Object.values(menuItems)
+        .flat()
+        .filter(
+          (item) =>
+            item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            item.description.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+    : menuItems[activeCategory] || [];
+
+  const cartTotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
 
   if (isLoading) {
     return (
@@ -285,53 +286,66 @@ export default function Home() {
   }
 
   return (
-    <Container maxW="container.xl" py={8}>
-      <VStack spacing={6} align="stretch">
-        <Center flexDirection="column">
-          <Image
-            src="/logo.png"
-            alt="Mitra Da Dhaba"
-            borderRadius="full"
-            boxSize="100px"
-            fallbackSrc="https://via.placeholder.com/100"
-          />
-          <Heading mt={4}>Mitra Da Dhaba</Heading>
-          <Text color="gray.600">46 Desker Road, #01-01, Singapore - 209577</Text>
-          <Heading size="lg" mt={6}>Table {tableNumber} - Menu</Heading>
-        </Center>
-
-        <HStack spacing={4}>
-          <InputGroup>
-            <InputLeftElement pointerEvents="none">
-              <SearchIcon color="gray.300" />
-            </InputLeftElement>
-            <Input
-              placeholder="Search menu..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+    <Box
+      bgImage="url('/assets/background.png')"
+      bgSize="cover"
+      bgPos="center"
+      bgAttachment="fixed"
+      minH="100vh"
+      color="white"
+      position="relative"
+    >
+      <Box
+        position="absolute"
+        top={0}
+        left={0}
+        w="100%"
+        h="100%"
+        bg="rgba(0, 0, 0, 0.4)"
+        zIndex={0}
+      />
+      <Container maxW="container.xl" py={8} zIndex={1} position="relative">
+        <VStack spacing={6} align="stretch">
+          <Center flexDirection="column">
+            <Image
+              src="/assets/logo.png"
+              alt="Mitra Da Dhaba"
+              borderRadius="full"
+              boxSize={{ base: '80px', md: '100px' }}
+              fallbackSrc="https://via.placeholder.com/100"
             />
-          </InputGroup>
-          <Button
-            colorScheme="blue"
-            onClick={onOpen}
-            position="relative"
-          >
-            Cart
-            {cart.length > 0 && (
-              <Badge
-                colorScheme="red"
-                position="absolute"
-                top="-2"
-                right="-2"
-                borderRadius="full"
-              >
-                {cart.length}
-              </Badge>
-            )}
-          </Button>
-        </HStack>
+            <Heading mt={4} {...customHeading}>
+              Mitra Da Dhaba
+            </Heading>
+            <Text {...customHeading} color="gray.50">
+              46 Desker Road, #01-01, Singapore - 209577
+            </Text>
+            <Heading size="lg" mt={6} {...customHeading}>
+              Table {tableNumber} - Menu
+            </Heading>
+          </Center>
 
-        {!searchTerm && (
+          <HStack spacing={4}>
+            <InputGroup>
+              <InputLeftElement pointerEvents="none">
+                <SearchIcon color="gray.50" />
+              </InputLeftElement>
+              <Input
+                placeholder="Search menu..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </InputGroup>
+            <Button colorScheme="orange" onClick={onOpen}>
+              Cart
+              {cart.length > 0 && (
+                <Badge colorScheme="red" ml={2}>
+                  {cart.length}
+                </Badge>
+              )}
+            </Button>
+          </HStack>
+
           <Tabs onChange={(index) => setActiveCategory(categories[index])} isFitted variant="enclosed">
             <TabList overflowX="auto" whiteSpace="nowrap">
               {categories.map((category) => (
@@ -339,61 +353,62 @@ export default function Home() {
               ))}
             </TabList>
           </Tabs>
-        )}
 
-        <MotionSimpleGrid
-          columns={{ base: 1, md: 2 }}
-          spacing={4}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <AnimatePresence>
-            {filteredMenuItems.map((item) => (
-              <MotionCard
-                key={item.id}
-                variant="outline"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                whileHover={{ scale: 1.02 }}
-                transition={{ duration: 0.2 }}
-              >
-                <CardBody>
-                  <VStack align="stretch" spacing={3}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="start">
-                      <Box flex="1">
-                        <Heading size="md">{item.name}</Heading>
-                        <FoodIndicator
-                          isSpicy={item.isSpicy}
-                          isVeg={item.isVeg}
-                          isRecommended={item.isRecommended}
-                        />
-                        <Text py={2}>{item.description}</Text>
-                        <Text color="blue.600" fontSize="xl">
-                          ${parseFloat(item.price).toFixed(2)}
-                        </Text>
-                      </Box>
-                      <Button
-                        colorScheme="blue"
-                        onClick={() => addToCart(item)}
-                      >
-                        Add +
-                      </Button>
-                    </Stack>
-                  </VStack>
-                </CardBody>
-              </MotionCard>
-            ))}
-          </AnimatePresence>
-        </MotionSimpleGrid>
-      </VStack>
+          <MotionSimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+            <AnimatePresence>
+              {filteredMenuItems.map((item) => (
+               <MotionCard
+               key={item.id}
+               bg="rgba(255, 255, 255, 0.8)"
+               borderRadius="lg"
+               boxShadow="0px 4px 10px rgba(0, 0, 0, 0.5)"
+               whileHover={{ scale: 1.02 }}
+               transition={{ duration: 0.2 }}
+             >
+               <CardBody>
+                 <VStack align="stretch" spacing={3}>
+                   <HStack justify="space-between" align="start">
+                     <Heading size="md" fontFamily="'Mukta', sans-serif">
+                       {item.name}
+                     </Heading>
+                     <HStack spacing={2}>
+                       {item.is_spicy && (
+                         <Tooltip label="Spicy">
+                           <Box color="red.500">
+                             <MdWhatshot size={24} />
+                           </Box>
+                         </Tooltip>
+                       )}
+                       {item.is_recommended && (
+                         <Tooltip label="Chef's Recommendation">
+                           <Box color="green.500">
+                             <StarIcon boxSize={5} />
+                           </Box>
+                         </Tooltip>
+                       )}
+                     </HStack>
+                   </HStack>
+                   <Text fontFamily="'Baloo Bhaina 2', cursive">{item.description}</Text>
+                   <Text color="blue.600" fontSize="xl">
+                     ${item.price.toFixed(2)}
+                   </Text>
+                   <Button colorScheme="orange" onClick={() => addToCart(item)}>
+                     Add +
+                   </Button>
+                 </VStack>
+               </CardBody>
+             </MotionCard>
+              ))}
+            </AnimatePresence>
+          </MotionSimpleGrid>
+        </VStack>
+      </Container>
 
-      {/* Cart Drawer */}
       <Drawer isOpen={isOpen} onClose={onClose} size="md">
         <DrawerOverlay />
-        <DrawerContent>
+        <DrawerContent bg="rgba(0, 0, 0, 0.7)" color="white">
           <DrawerCloseButton />
-          <DrawerHeader>Your Cart - Table {tableNumber}</DrawerHeader>
+          <DrawerHeader>Your Cart</DrawerHeader>
 
           <DrawerBody>
             <VStack spacing={4} align="stretch">
@@ -407,7 +422,7 @@ export default function Home() {
                 />
               ))}
               {cart.length === 0 && (
-                <Text textAlign="center" color="gray.500">
+                <Text textAlign="center" color="gray.300">
                   Your cart is empty
                 </Text>
               )}
@@ -420,7 +435,7 @@ export default function Home() {
                 Total: ${cartTotal.toFixed(2)}
               </Text>
               <Button
-                colorScheme="blue"
+                colorScheme="orange"
                 width="100%"
                 onClick={placeOrder}
                 isDisabled={cart.length === 0}
@@ -431,6 +446,6 @@ export default function Home() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
-    </Container>
+    </Box>
   );
 }
