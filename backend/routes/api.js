@@ -60,4 +60,6 @@ router.put('/orders/:id/status', async (req, res) => {
     }
 });
 
+router.use('/admin', require('./adminRoutes'));
+
 module.exports = router;
