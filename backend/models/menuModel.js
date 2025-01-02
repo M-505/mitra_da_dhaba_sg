@@ -55,17 +55,43 @@ exports.createMenuItem = async (name, description, price, categoryId, imageUrl) 
     }
   };
 
-exports.updateMenuItem = async (id, name, description, price, categoryId, imageUrl) => {
+  exports.updateMenuItem = async (id, updateData) => {
     try {
-      await db.query(
-        'UPDATE menu_items SET name = ?, description = ?, price = ?, category_id = ?, image_url = ? WHERE id = ?',
-        [name, description, price, categoryId, imageUrl, id]
+      // Build the SQL query dynamically based on updateData
+      const fields = Object.keys(updateData)
+        .map(key => `${key} = ?`)
+        .join(', ');
+      const values = Object.values(updateData);
+      
+      // Add id to values array
+      values.push(id);
+  
+      const query = `
+        UPDATE menu_items 
+        SET ${fields}
+        WHERE id = ?
+      `;
+  
+      console.log('Update query:', query, values);
+  
+      const [result] = await db.query(query, values);
+      
+      if (result.affectedRows === 0) {
+        throw new Error('Menu item not found');
+      }
+  
+      // Fetch and return the updated item
+      const [updatedRows] = await db.query(
+        'SELECT * FROM menu_items WHERE id = ?',
+        [id]
       );
-      return { id, name, description, price, category_id: categoryId, image_url: imageUrl };
+      
+      return updatedRows[0];
     } catch (err) {
+      console.error('Database error:', err);
       throw new Error('Failed to update menu item');
     }
-};
+  };
 
 exports.deleteMenuItem = async (id) => {
     try {

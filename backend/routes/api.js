@@ -60,6 +60,17 @@ router.put('/orders/:id/status', async (req, res) => {
     }
 });
 
+// backend/routes/api.js
+router.post('/notify', (req, res) => {
+    const { type } = req.body;
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type }));
+      }
+    });
+    res.json({ success: true });
+  });
+
 router.use('/admin', require('./adminRoutes'));
 
 module.exports = router;

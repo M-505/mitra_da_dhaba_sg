@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
@@ -41,6 +43,65 @@ const AdminDashboard = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const fileInputRef = useRef();
   const toast = useToast();
+
+ // src/app/admin/page.js
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsLoading(true);
+
+  const formDataToSend = new FormData();
+  
+  // Append all form fields
+  Object.keys(formData).forEach(key => {
+    if (key === 'image' && formData[key]) {
+      formDataToSend.append('image', formData[key]);
+    } else if (key !== 'image_preview' && formData[key] !== null) {
+      formDataToSend.append(key, String(formData[key])); // Convert to string
+    }
+  });
+
+  try {
+    const url = selectedItem
+      ? `http://localhost:3001/api/menu/${selectedItem.id}` // Use the actual item ID
+      : 'http://localhost:3001/api/menu';
+    
+    const method = selectedItem ? 'PUT' : 'POST';
+
+    console.log('Submitting to:', url, 'with method:', method);
+
+    const response = await fetch(url, {
+      method,
+      body: formDataToSend,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new Error(errorData?.message || 'Failed to save menu item');
+    }
+
+    const savedItem = await response.json();
+    console.log('Saved item:', savedItem);
+
+    toast({
+      title: `Menu item ${selectedItem ? 'updated' : 'created'} successfully`,
+      status: 'success',
+      duration: 3000,
+    });
+    
+    fetchMenuItems();
+    handleClose();
+  } catch (error) {
+    console.error('Error saving menu item:', error);
+    toast({
+      title: 'Error saving menu item',
+      description: error.message,
+      status: 'error',
+      duration: 3000,
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const [formData, setFormData] = useState({
     name: '',
@@ -105,50 +166,7 @@ const AdminDashboard = () => {
       }));
     }
   };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    const formDataToSend = new FormData();
-    Object.keys(formData).forEach(key => {
-      if (key !== 'image_preview' && formData[key] !== null) {
-        formDataToSend.append(key, formData[key]);
-      }
-    });
-
-    try {
-      const url = selectedItem
-        ? `http://localhost:3001/api/menu/${selectedItem.id}`
-        : 'http://localhost:3001/api/menu';
-      
-      const method = selectedItem ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        body: formDataToSend,
-      });
-
-      if (response.ok) {
-        toast({
-          title: `Menu item ${selectedItem ? 'updated' : 'created'} successfully`,
-          status: 'success',
-          duration: 3000,
-        });
-        fetchMenuItems();
-        handleClose();
-      }
-    } catch (error) {
-      toast({
-        title: 'Error saving menu item',
-        status: 'error',
-        duration: 3000,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  
   const handleEdit = (item) => {
     setSelectedItem(item);
     setFormData({

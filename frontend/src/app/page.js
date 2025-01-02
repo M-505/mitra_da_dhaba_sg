@@ -39,7 +39,7 @@ import {
   TagLeftIcon,
   TagLabel,
 } from '@chakra-ui/react';
-import { SearchIcon, DeleteIcon, StarIcon, WarningIcon } from '@chakra-ui/icons';
+import { SearchIcon, DeleteIcon, StarIcon } from '@chakra-ui/icons';
 import { MdWhatshot } from 'react-icons/md';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -89,9 +89,9 @@ const CartItem = ({ item, updateQuantity, removeFromCart, updateNote }) => (
             <Heading size="sm">{item.name}</Heading>
             <Text>${parseFloat(item.price * item.quantity || 0).toFixed(2)}</Text>
             <FoodIndicator
-              isSpicy={item.isSpicy}
-              isVeg={item.isVeg}
-              isRecommended={item.isRecommended}
+              isSpicy={item.is_spicy}
+              isVeg={item.is_veg}
+              isRecommended={item.is_recommended}
             />
           </Box>
           <HStack>
@@ -132,10 +132,26 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [tableNumber, setTableNumber] = useState(1);
+  const [socket, setSocket] = useState(null);
   const toast = useToast();
 
   useEffect(() => {
     fetchMenuItems();
+
+    // Setup WebSocket connection
+    const ws = new WebSocket('ws://localhost:3001');
+    setSocket(ws);
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'MENU_UPDATE') {
+        fetchMenuItems(); // Refetch menu items when update received
+      }
+    };
+
+    return () => {
+      if (ws) ws.close();
+    };
   }, []);
 
   const fetchMenuItems = async () => {
@@ -147,10 +163,6 @@ export default function Home() {
       data.forEach((item) => {
         item.price = parseFloat(item.price || 0);
         if (item.is_available) {
-          // Add default values if not present in the data
-          item.is_spicy = item.is_spicy || false;
-          item.is_recommended = item.is_recommended || false;
-          
           if (!categoryMap[item.category_id]) {
             categoryMap[item.category_id] = [];
           }
@@ -216,17 +228,15 @@ export default function Home() {
 
   const placeOrder = async () => {
     try {
-      // Prepare order data
       const orderData = {
         tableNumber: tableNumber,
         items: cart.map(item => ({
-          id: item.id,        // menu_item_id
+          id: item.id,
           quantity: item.quantity,
           note: item.note || null
         }))
       };
-  
-      // Send order to backend
+
       const response = await fetch('http://localhost:3001/api/orders', {
         method: 'POST',
         headers: {
@@ -234,23 +244,21 @@ export default function Home() {
         },
         body: JSON.stringify(orderData)
       });
-  
+
       if (!response.ok) {
         throw new Error('Failed to place order');
       }
-  
-      // Show success message
+
       toast({
         title: 'Order placed!',
         description: `Your order has been sent to the cashier.`,
         status: 'success',
         duration: 3000,
       });
-  
-      // Clear cart and close drawer
+
       setCart([]);
       onClose();
-  
+
     } catch (err) {
       console.error('Order error:', err);
       toast({
@@ -357,47 +365,67 @@ export default function Home() {
           <MotionSimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
             <AnimatePresence>
               {filteredMenuItems.map((item) => (
-               <MotionCard
-               key={item.id}
-               bg="rgba(255, 255, 255, 0.8)"
-               borderRadius="lg"
-               boxShadow="0px 4px 10px rgba(0, 0, 0, 0.5)"
-               whileHover={{ scale: 1.02 }}
-               transition={{ duration: 0.2 }}
-             >
-               <CardBody>
-                 <VStack align="stretch" spacing={3}>
-                   <HStack justify="space-between" align="start">
-                     <Heading size="md" fontFamily="'Mukta', sans-serif">
-                       {item.name}
-                     </Heading>
-                     <HStack spacing={2}>
-                       {item.is_spicy && (
-                         <Tooltip label="Spicy">
-                           <Box color="red.500">
-                             <MdWhatshot size={24} />
-                           </Box>
-                         </Tooltip>
-                       )}
-                       {item.is_recommended && (
-                         <Tooltip label="Chef's Recommendation">
-                           <Box color="green.500">
-                             <StarIcon boxSize={5} />
-                           </Box>
-                         </Tooltip>
-                       )}
-                     </HStack>
-                   </HStack>
-                   <Text fontFamily="'Baloo Bhaina 2', cursive">{item.description}</Text>
-                   <Text color="blue.600" fontSize="xl">
-                     ${item.price.toFixed(2)}
-                   </Text>
-                   <Button colorScheme="orange" onClick={() => addToCart(item)}>
-                     Add +
-                   </Button>
-                 </VStack>
-               </CardBody>
-             </MotionCard>
+                <MotionCard
+                  key={item.id}
+                  bg="rgba(255, 255, 255, 0.8)"
+                  borderRadius="lg"
+                  boxShadow="0px 4px 10px rgba(0, 0, 0, 0.5)"
+                  whileHover={{ scale: 1.02 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <CardBody>
+                    <VStack align="stretch" spacing={3}>
+                      {item.image_url && (
+                        <Box
+                          position="relative"
+                          width="100%"
+                          height="200px"
+                          overflow="hidden"
+                          borderRadius="md"
+                        >
+                          <Image
+                            src={item.image_url}
+                            alt={item.name}
+                            objectFit="cover"
+                            width="100%"
+                            height="100%"
+                            fallbackSrc="https://via.placeholder.com/400x200?text=No+Image"
+                          />
+                        </Box>
+                      )}
+                      <HStack justify="space-between" align="start">
+                        <Heading size="md" color="black" fontFamily="'Mukta', sans-serif">
+                          {item.name}
+                        </Heading>
+                        <HStack spacing={2}>
+                          {item.is_spicy && (
+                            <Tooltip label="Spicy">
+                              <Box color="red.500">
+                                <MdWhatshot size={24} />
+                              </Box>
+                            </Tooltip>
+                          )}
+                          {item.is_recommended && (
+                            <Tooltip label="Chef's Recommendation">
+                              <Box color="green.500">
+                                <StarIcon boxSize={5} />
+                              </Box>
+                            </Tooltip>
+                          )}
+                        </HStack>
+                      </HStack>
+                      <Text color="black" fontFamily="'Baloo Bhaina 2', cursive">
+                        {item.description}
+                      </Text>
+                      <Text color="blue.600" fontSize="xl">
+                        ${item.price.toFixed(2)}
+                      </Text>
+                      <Button colorScheme="orange" onClick={() => addToCart(item)}>
+                        Add +
+                      </Button>
+                    </VStack>
+                  </CardBody>
+                </MotionCard>
               ))}
             </AnimatePresence>
           </MotionSimpleGrid>
@@ -439,8 +467,7 @@ export default function Home() {
                 width="100%"
                 onClick={placeOrder}
                 isDisabled={cart.length === 0}
-              >
-                Place Order
+              >Place Order
               </Button>
             </VStack>
           </DrawerFooter>
