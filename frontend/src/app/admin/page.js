@@ -7,7 +7,6 @@ import {
   Container,
   FormControl,
   FormLabel,
-  Grid,
   Heading,
   Image,
   Input,
@@ -31,7 +30,7 @@ import {
   VStack,
   HStack,
   IconButton,
-  Text
+  Tooltip,
 } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon, EditIcon } from '@chakra-ui/icons';
 
@@ -43,65 +42,6 @@ const AdminDashboard = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const fileInputRef = useRef();
   const toast = useToast();
-
- // src/app/admin/page.js
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setIsLoading(true);
-
-  const formDataToSend = new FormData();
-  
-  // Append all form fields
-  Object.keys(formData).forEach(key => {
-    if (key === 'image' && formData[key]) {
-      formDataToSend.append('image', formData[key]);
-    } else if (key !== 'image_preview' && formData[key] !== null) {
-      formDataToSend.append(key, String(formData[key])); // Convert to string
-    }
-  });
-
-  try {
-    const url = selectedItem
-      ? `http://localhost:3001/api/menu/${selectedItem.id}` // Use the actual item ID
-      : 'http://localhost:3001/api/menu';
-    
-    const method = selectedItem ? 'PUT' : 'POST';
-
-    console.log('Submitting to:', url, 'with method:', method);
-
-    const response = await fetch(url, {
-      method,
-      body: formDataToSend,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      throw new Error(errorData?.message || 'Failed to save menu item');
-    }
-
-    const savedItem = await response.json();
-    console.log('Saved item:', savedItem);
-
-    toast({
-      title: `Menu item ${selectedItem ? 'updated' : 'created'} successfully`,
-      status: 'success',
-      duration: 3000,
-    });
-    
-    fetchMenuItems();
-    handleClose();
-  } catch (error) {
-    console.error('Error saving menu item:', error);
-    toast({
-      title: 'Error saving menu item',
-      description: error.message,
-      status: 'error',
-      duration: 3000,
-    });
-  } finally {
-    setIsLoading(false);
-  }
-};
 
   const [formData, setFormData] = useState({
     name: '',
@@ -115,38 +55,47 @@ const handleSubmit = async (e) => {
     image_preview: null
   });
 
-  useEffect(() => {
-    fetchMenuItems();
-    fetchCategories();
-  }, []);
-
-  const fetchMenuItems = async () => {
-    try {
-      const response = await fetch('http://localhost:3001/api/menu');
-      const data = await response.json();
-      setMenuItems(data);
-    } catch (error) {
-      toast({
-        title: 'Error fetching menu items',
-        status: 'error',
-        duration: 3000,
-      });
-    }
-  };
-
   const fetchCategories = async () => {
     try {
       const response = await fetch('http://localhost:3001/api/categories');
+      if (!response.ok) {
+        throw new Error('Failed to fetch categories');
+      }
       const data = await response.json();
       setCategories(data);
-    } catch (error) {
+    } catch (err) {
       toast({
         title: 'Error fetching categories',
+        description: 'Please refresh the page or try again later',
         status: 'error',
-        duration: 3000,
+        duration: 5000,
+        isClosable: true,
       });
     }
   };
+
+  const fetchMenuItems = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/menu/all');
+      const data = await res.json();
+      setMenuItems(data);
+    } catch (err) {
+      toast({
+        title: 'Error fetching menu',
+        description: 'Please try again later',
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+    fetchMenuItems();
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -166,7 +115,57 @@ const handleSubmit = async (e) => {
       }));
     }
   };
-  
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const formDataToSend = new FormData();
+    Object.keys(formData).forEach(key => {
+      if (key === 'image' && formData[key]) {
+        formDataToSend.append('image', formData[key]);
+      } else if (key !== 'image_preview' && formData[key] !== null) {
+        formDataToSend.append(key, String(formData[key]));
+      }
+    });
+
+    try {
+      const url = selectedItem
+        ? `http://localhost:3001/api/menu/${selectedItem.id}`
+        : 'http://localhost:3001/api/menu';
+      
+      const method = selectedItem ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        body: formDataToSend,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save menu item');
+      }
+
+      toast({
+        title: `Menu item ${selectedItem ? 'updated' : 'created'} successfully`,
+        status: 'success',
+        duration: 3000,
+      });
+      
+      fetchMenuItems();
+      handleClose();
+    } catch (error) {
+      console.error('Error saving menu item:', error);
+      toast({
+        title: 'Error saving menu item',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleEdit = (item) => {
     setSelectedItem(item);
     setFormData({
@@ -201,6 +200,7 @@ const handleSubmit = async (e) => {
       } catch (error) {
         toast({
           title: 'Error deleting menu item',
+          description: error.message,
           status: 'error',
           duration: 3000,
         });
@@ -245,7 +245,7 @@ const handleSubmit = async (e) => {
           </Tr>
         </Thead>
         <Tbody>
-          {menuItems.map((item) => (
+          {Array.isArray(menuItems) && menuItems.map((item) => (
             <Tr key={item.id}>
               <Td>
                 <Image
@@ -260,31 +260,47 @@ const handleSubmit = async (e) => {
               <Td>
                 {categories.find(cat => cat.id === item.category_id)?.name}
               </Td>
-              <Td>${item.price}</Td>
+              <Td>${parseFloat(item.price).toFixed(2)}</Td>
               <Td>
                 <Switch
                   isChecked={item.is_available}
                   onChange={async () => {
                     try {
-                      await fetch(`http://localhost:3001/api/menu/${item.id}`, {
-                        method: 'PUT',
-                        headers: {
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                          ...item,
-                          is_available: !item.is_available,
-                        }),
+                      const response = await fetch(
+                        `http://localhost:3001/api/menu/${item.id}/availability`,
+                        {
+                          method: 'PATCH',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            is_available: !item.is_available
+                          }),
+                        }
+                      );
+
+                      if (!response.ok) {
+                        throw new Error('Failed to update availability');
+                      }
+
+                      await fetchMenuItems();
+
+                      toast({
+                        title: `${item.name} is now ${!item.is_available ? 'available' : 'unavailable'}`,
+                        status: 'success',
+                        duration: 2000,
                       });
-                      fetchMenuItems();
                     } catch (error) {
+                      console.error('Toggle error:', error);
                       toast({
                         title: 'Error updating availability',
+                        description: error.message,
                         status: 'error',
                         duration: 3000,
                       });
                     }
                   }}
+                  colorScheme="green"
                 />
               </Td>
               <Td>
@@ -293,11 +309,13 @@ const handleSubmit = async (e) => {
                     icon={<EditIcon />}
                     onClick={() => handleEdit(item)}
                     colorScheme="blue"
+                    size="sm"
                   />
                   <IconButton
                     icon={<DeleteIcon />}
                     onClick={() => handleDelete(item.id)}
                     colorScheme="red"
+                    size="sm"
                   />
                 </HStack>
               </Td>
@@ -359,7 +377,7 @@ const handleSubmit = async (e) => {
                 />
               </FormControl>
 
-              <Grid templateColumns="repeat(2, 1fr)" gap={4} width="100%">
+              <HStack width="100%" spacing={8}>
                 <FormControl display="flex" alignItems="center">
                   <FormLabel mb="0">Spicy</FormLabel>
                   <Switch
@@ -377,7 +395,16 @@ const handleSubmit = async (e) => {
                     onChange={handleInputChange}
                   />
                 </FormControl>
-              </Grid>
+
+                <FormControl display="flex" alignItems="center">
+                  <FormLabel mb="0">Available</FormLabel>
+                  <Switch
+                    name="is_available"
+                    isChecked={formData.is_available}
+                    onChange={handleInputChange}
+                  />
+                </FormControl>
+              </HStack>
 
               <FormControl>
                 <FormLabel>Image</FormLabel>
@@ -392,13 +419,14 @@ const handleSubmit = async (e) => {
                   Choose Image
                 </Button>
                 {formData.image_preview && (
-                  <Image
-                    src={formData.image_preview}
-                    alt="Preview"
-                    mt={2}
-                    maxH="200px"
-                    objectFit="cover"
-                  />
+                  <Box mt={2}>
+                    <Image
+                      src={formData.image_preview}
+                      alt="Preview"
+                      maxH="200px"
+                      objectFit="cover"
+                    />
+                  </Box>
                 )}
               </FormControl>
             </VStack>

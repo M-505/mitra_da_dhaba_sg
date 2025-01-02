@@ -149,60 +149,6 @@ exports.getOrderById = async (id) => {
     }
 };
 
-exports.mergeOrders = async (parentId, childId) => {
-  try {
-    await db.query('START TRANSACTION');
-
-    // Get parent and child orders
-    const [parentOrder] = await db.query('SELECT * FROM orders WHERE id = ?', [parentId]);
-    const [childOrder] = await db.query('SELECT * FROM orders WHERE id = ?', [childId]);
-
-    // Validate orders
-    if (!parentOrder[0] || !childOrder[0]) {
-      throw new Error('Order not found');
-    }
-
-    if (parentOrder[0].status !== 'confirmed') {
-      throw new Error('Parent order must be confirmed');
-    }
-
-    if (childOrder[0].status !== 'pending') {
-      throw new Error('Can only merge pending orders');
-    }
-
-    if (parentOrder[0].table_number !== childOrder[0].table_number) {
-      throw new Error('Can only merge orders from the same table');
-    }
-
-    // Update child order
-    await db.query(
-      'UPDATE orders SET parent_order_id = ?, status = ? WHERE id = ?',
-      [parentId, 'merged', childId]
-    );
-
-    // Update parent order total
-    const [items] = await db.query(`
-      SELECT SUM(oi.quantity * oi.price_at_time) as total
-      FROM order_items oi
-      WHERE oi.order_id IN (
-        SELECT id FROM orders 
-        WHERE id = ? OR parent_order_id = ?
-      )
-    `, [parentId, parentId]);
-
-    await db.query(
-      'UPDATE orders SET total_amount = ? WHERE id = ?',
-      [items[0].total, parentId]
-    );
-
-    await db.query('COMMIT');
-    return true;
-  } catch (err) {
-    await db.query('ROLLBACK');
-    throw err;
-  }
-};
-
 exports.updateOrderStatus = async (id, status) => {
     try {
         const [result] = await db.query(
@@ -213,4 +159,137 @@ exports.updateOrderStatus = async (id, status) => {
     } catch (err) {
         throw new Error('Failed to update order status');
     }
+};
+
+// models/orderModel.js
+exports.getMergeableOrders = async (tableNumber) => {
+  try {
+    const [orders] = await db.query(`
+      SELECT 
+        o.id, 
+        o.table_number, 
+        o.total_amount, 
+        o.status,
+        JSON_ARRAYAGG(
+          JSON_OBJECT(
+            'id', oi.id,
+            'menu_item_id', mi.id,
+            'name', mi.name,
+            'quantity', oi.quantity,
+            'price', oi.price_at_time
+          )
+        ) as items
+      FROM orders o
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
+      WHERE o.table_number = ? 
+      AND o.parent_order_id IS NULL
+      AND o.status IN ('pending', 'confirmed')
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+    `, [tableNumber]);
+
+    return orders;
+  } catch (err) {
+    throw new Error('Failed to retrieve mergeable orders');
+  }
+};
+
+exports.mergeOrders = async (parentId, childId) => {
+  const conn = await db.getConnection();
+  
+  try {
+    await conn.beginTransaction();
+
+    // Get parent and child orders
+    const [orders] = await conn.query(
+      'SELECT * FROM orders WHERE id IN (?, ?)',
+      [parentId, childId]
+    );
+
+    if (orders.length !== 2) {
+      throw new Error('One or both orders not found');
+    }
+
+    const parentOrder = orders.find(o => o.id === parseInt(parentId));
+    const childOrder = orders.find(o => o.id === parseInt(childId));
+
+    // Validate table numbers match
+    if (parentOrder.table_number !== childOrder.table_number) {
+      throw new Error('Can only merge orders from the same table');
+    }
+
+    // Allow confirmed parent order with pending child order
+    if (!(
+      (parentOrder.status === 'confirmed' && childOrder.status === 'pending') ||
+      (parentOrder.status === 'pending' && childOrder.status === 'pending')
+    )) {
+      throw new Error('Can only merge: (1) two pending orders, or (2) a pending order into a confirmed order');
+    }
+
+    // Get all items from both orders
+    const [items] = await conn.query(
+      `SELECT oi.*, mi.name 
+       FROM order_items oi 
+       JOIN menu_items mi ON oi.menu_item_id = mi.id 
+       WHERE oi.order_id IN (?, ?)`,
+      [parentId, childId]
+    );
+
+    // Calculate new total
+    const total_amount = items.reduce((sum, item) => 
+      sum + (parseFloat(item.price_at_time) * parseInt(item.quantity)), 0
+    );
+
+    // Update parent order's total
+    await conn.query(
+      'UPDATE orders SET total_amount = ? WHERE id = ?',
+      [total_amount, parentId]
+    );
+
+    // Move items from child to parent
+    await conn.query(
+      'UPDATE order_items SET order_id = ? WHERE order_id = ?',
+      [parentId, childId]
+    );
+
+    // Mark child order as merged
+    await conn.query(
+      'UPDATE orders SET status = ?, parent_order_id = ? WHERE id = ?',
+      ['merged', parentId, childId]
+    );
+
+    await conn.commit();
+
+    // Return updated parent order
+    const [updatedOrder] = await conn.query(`
+      SELECT 
+        o.id, 
+        o.table_number, 
+        o.total_amount, 
+        o.status,
+        JSON_ARRAYAGG(
+          JSON_OBJECT(
+            'id', oi.id,
+            'menu_item_id', mi.id,
+            'name', mi.name,
+            'quantity', oi.quantity,
+            'price', oi.price_at_time
+          )
+        ) as items
+      FROM orders o
+      JOIN order_items oi ON o.id = oi.order_id
+      JOIN menu_items mi ON oi.menu_item_id = mi.id
+      WHERE o.id = ?
+      GROUP BY o.id
+    `, [parentId]);
+
+    return updatedOrder[0];
+
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 };

@@ -138,21 +138,47 @@ export default function Home() {
   useEffect(() => {
     fetchMenuItems();
 
-    // Setup WebSocket connection
+     // Setup WebSocket connection with error handling and reconnection
+  const connectWebSocket = () => {
     const ws = new WebSocket('ws://localhost:3001');
-    setSocket(ws);
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      setSocket(ws);
+    };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'MENU_UPDATE') {
-        fetchMenuItems(); // Refetch menu items when update received
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'MENU_UPDATE') {
+          fetchMenuItems();
+        }
+      } catch (error) {
+        console.error('WebSocket message error:', error);
       }
     };
 
-    return () => {
-      if (ws) ws.close();
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
     };
-  }, []);
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected. Trying to reconnect...');
+      setTimeout(connectWebSocket, 3000); // Try to reconnect after 3 seconds
+    };
+
+    return ws;
+  };
+
+  const ws = connectWebSocket();
+
+  // Cleanup on component unmount
+  return () => {
+    if (ws) {
+      ws.close();
+    }
+  };
+}, []);
 
   const fetchMenuItems = async () => {
     setIsLoading(true);
@@ -229,14 +255,16 @@ export default function Home() {
   const placeOrder = async () => {
     try {
       const orderData = {
-        tableNumber: tableNumber,
+        table_number: tableNumber,
         items: cart.map(item => ({
-          id: item.id,
-          quantity: item.quantity,
-          note: item.note || null
+          menu_item_id: item.id,
+          quantity: parseInt(item.quantity),
+          unit_price: parseFloat(item.price)
         }))
       };
-
+  
+      console.log('Sending order data:', orderData);
+  
       const response = await fetch('http://localhost:3001/api/orders', {
         method: 'POST',
         headers: {
@@ -244,41 +272,46 @@ export default function Home() {
         },
         body: JSON.stringify(orderData)
       });
-
+  
+      const responseData = await response.json();
+      console.log('Order response:', responseData);
+  
       if (!response.ok) {
-        throw new Error('Failed to place order');
+        throw new Error(`Failed to place order: ${JSON.stringify(responseData)}`);
       }
-
+  
       toast({
-        title: 'Order placed!',
-        description: `Your order has been sent to the cashier.`,
+        title: 'Order placed successfully!',
+        description: `Order #${responseData.orderId} - Total: $${responseData.total_amount.toFixed(2)}`,
         status: 'success',
         duration: 3000,
       });
-
+  
       setCart([]);
       onClose();
-
+  
     } catch (err) {
       console.error('Order error:', err);
       toast({
         title: 'Order failed',
-        description: 'Failed to place order. Please try again.',
+        description: err.message || 'Failed to place order. Please try again.',
         status: 'error',
         duration: 3000,
       });
     }
   };
-
-  const filteredMenuItems = searchTerm
-    ? Object.values(menuItems)
-        .flat()
-        .filter(
-          (item) =>
-            item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.description.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-    : menuItems[activeCategory] || [];
+  
+  // src/app/page.js
+const filteredMenuItems = searchTerm
+? Object.values(menuItems)
+    .flat()
+    .filter(
+      (item) =>
+        item.is_available && // Only show available items
+        (item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+         item.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    )
+: (menuItems[activeCategory] || []).filter(item => item.is_available); // Only show available items
 
   const cartTotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
 

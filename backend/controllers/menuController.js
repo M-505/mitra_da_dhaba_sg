@@ -1,6 +1,7 @@
 // controllers/menuController.js
 const menuModel = require('../models/menuModel');
 const { validationResult } = require('express-validator');
+const db = require('../config/database');
 
 exports.getAllMenuItems = async (req, res, next) => {
     try {
@@ -94,6 +95,49 @@ exports.updateMenuItem = async (req, res, next) => {
   }
 };
 
+exports.updateAvailability = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_available } = req.body;
+
+    console.log('Updating availability:', { id, is_available });
+
+    const [result] = await db.query(
+      'UPDATE menu_items SET is_available = ? WHERE id = ?',
+      [is_available ? 1 : 0, id]
+    );
+
+    console.log('Update result:', result);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Menu item not found' 
+      });
+    }
+
+    // Fetch the updated item
+    const [updatedItems] = await db.query(
+      'SELECT * FROM menu_items WHERE id = ?',
+      [id]
+    );
+
+    const updatedItem = updatedItems[0];
+    console.log('Sending response:', updatedItem);
+
+    res.json({
+      success: true,
+      data: updatedItem
+    });
+  } catch (err) {
+    console.error('Error in updateAvailability:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
 exports.deleteMenuItem = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -106,4 +150,19 @@ exports.deleteMenuItem = async (req, res, next) => {
     } catch (err) {
         next(err);
     }
+};
+
+// backend/controllers/menuController.js
+exports.getAllMenuItemsAdmin = async (req, res) => {
+  try {
+    // This query doesn't filter by is_available
+    const [rows] = await db.query('SELECT * FROM menu_items');
+    res.json(rows);
+  } catch (err) {
+    console.error('Error getting menu items:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: err.message 
+    });
+  }
 };

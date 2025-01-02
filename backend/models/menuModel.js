@@ -93,6 +93,29 @@ exports.createMenuItem = async (name, description, price, categoryId, imageUrl) 
     }
   };
 
+  exports.updateAvailability = async (id, isAvailable) => {
+    try {
+      const [result] = await db.query(
+        'UPDATE menu_items SET is_available = ? WHERE id = ?',
+        [isAvailable, id]
+      );
+  
+      if (result.affectedRows === 0) {
+        throw new Error('Menu item not found');
+      }
+  
+      // Fetch and return the updated item
+      const [updatedRows] = await db.query(
+        'SELECT * FROM menu_items WHERE id = ?',
+        [id]
+      );
+      
+      return updatedRows[0];
+    } catch (err) {
+      throw new Error('Failed to update menu item availability');
+    }
+  };
+
 exports.deleteMenuItem = async (id) => {
     try {
         const [result] = await db.query('DELETE FROM menu_items WHERE id = ?', [id]);

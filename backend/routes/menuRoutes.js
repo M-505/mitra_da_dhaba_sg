@@ -8,7 +8,7 @@ router.get('/', async (req, res, next) => {
   try {
     await menuController.getAllMenuItems(req, res);
   } catch (err) {
-    next(err); // Pass errors to a global error handler
+    next(err);
   }
 });
 
@@ -42,10 +42,29 @@ router.put('/:id', upload.single('image'), async (req, res, next) => {
   }
 });
 
+// Update menu item availability
+router.patch('/:id/availability', async (req, res, next) => {
+  try {
+    await menuController.updateAvailability(req, res);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Delete a menu item
 router.delete('/:id', async (req, res, next) => {
   try {
     await menuController.deleteMenuItem(req, res);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// backend/routes/menuRoutes.js
+// Add this new route for fetching ALL items
+router.get('/all', async (req, res, next) => {
+  try {
+    await menuController.getAllMenuItemsAdmin(req, res);
   } catch (err) {
     next(err);
   }
