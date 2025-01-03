@@ -22,7 +22,7 @@ exports.getAllMenuItems = async () => {
       throw new Error('Failed to retrieve menu items');
     }
   };
-
+  
 exports.getMenuItemsByCategory = async (categoryId) => {
     try {
         const [rows] = await db.query(

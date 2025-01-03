@@ -23,21 +23,36 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
+  ModalFooter,
   ModalCloseButton,
   useDisclosure,
   useToast,
-  Badge
+  Badge,
+  Tooltip,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
+  NumberInput,
+  NumberInputField,
+  NumberInputStepper,
+  NumberIncrementStepper,
+  NumberDecrementStepper,
+  IconButton,
 } from '@chakra-ui/react';
+import { InfoIcon, DeleteIcon } from '@chakra-ui/icons';
 
 const StatusBadge = ({ status, isMerged }) => {
   const colorScheme = {
     pending: 'yellow',
-    confirmed: 'blue',
+    accepted: 'blue',
     preparing: 'purple',
     completed: 'green',
     cancelled: 'red',
     merged: 'gray',
-    paid: 'teal'
+    paid: 'teal',
   }[status];
 
   return (
@@ -45,6 +60,171 @@ const StatusBadge = ({ status, isMerged }) => {
       {isMerged ? 'MERGED' : status.toUpperCase()}
     </Badge>
   );
+};
+
+const EditOrderModal = ({ isOpen, onClose, order, onSave }) => {
+  const [items, setItems] = useState(order?.items || []);
+  const toast = useToast();
+
+  useEffect(() => {
+    setItems(order?.items || []);
+  }, [order]);
+
+  const handleQuantityChange = (index, newQuantity) => {
+    const updatedItems = [...items];
+    updatedItems[index].quantity = Math.max(1, parseInt(newQuantity) || 1);
+    setItems(updatedItems);
+  };
+
+  const handleRemoveItem = (index) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const handleNoteChange = (index, note) => {
+    const updatedItems = [...items];
+    updatedItems[index].note = note;
+    setItems(updatedItems);
+  };
+
+  const handleSave = async () => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/orders/${order.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          items: items.map(item => ({
+            id: item.id,
+            menu_item_id: item.menu_item_id,
+            name: item.name,
+            price: parseFloat(item.price),
+            quantity: parseInt(item.quantity),
+            note: item.note || null
+          })),
+          total_amount: items.reduce((sum, item) => 
+            sum + (parseFloat(item.price) * parseInt(item.quantity)), 0
+          )
+        }),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update order');
+      }
+
+      const updatedOrder = await response.json();
+
+      // If updatedOrder is null => the order was deleted (no items)
+      toast({
+        title: updatedOrder ? 'Order Updated' : 'Order Removed',
+        status: 'success',
+        duration: 3000,
+      });
+
+      onSave(updatedOrder); // pass updated (or null) back to the parent
+      onClose();
+    } catch (error) {
+      console.error('Update error:', error);
+      toast({
+        title: 'Error',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+      });
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} size="xl">
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>Edit Order #{order?.id}</ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          <VStack spacing={4}>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Item</Th>
+                  <Th>Price</Th>
+                  <Th>Quantity</Th>
+                  <Th>Notes</Th>
+                  <Th>Total</Th>
+                  <Th>Actions</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {items.map((item, index) => (
+                  <Tr key={index}>
+                    <Td>{item.name}</Td>
+                    <Td>${parseFloat(item.price).toFixed(2)}</Td>
+                    <Td>
+                      <NumberInput
+                        value={item.quantity}
+                        min={1}
+                        size="sm"
+                        maxW={20}
+                        onChange={(value) => handleQuantityChange(index, value)}
+                      >
+                        <NumberInputField />
+                        <NumberInputStepper>
+                          <NumberIncrementStepper />
+                          <NumberDecrementStepper />
+                        </NumberInputStepper>
+                      </NumberInput>
+                    </Td>
+                    <Td>
+                      <input
+                        type="text"
+                        value={item.note || ''}
+                        onChange={(e) => handleNoteChange(index, e.target.value)}
+                        placeholder="Add note"
+                        style={{ width: '100%', padding: '4px' }}
+                      />
+                    </Td>
+                    <Td>${(item.price * item.quantity).toFixed(2)}</Td>
+                    <Td>
+                      <IconButton
+                        icon={<DeleteIcon />}
+                        onClick={() => handleRemoveItem(index)}
+                        colorScheme="red"
+                        size="sm"
+                      />
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+
+            <Text fontWeight="bold">
+              Total: ${items.reduce((sum, item) =>
+                sum + (parseFloat(item.price) * parseInt(item.quantity)), 0
+              ).toFixed(2)}
+            </Text>
+          </VStack>
+        </ModalBody>
+
+        <ModalFooter>
+          <Button variant="ghost" mr={3} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button colorScheme="blue" onClick={handleSave}>
+            Save Changes
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+};
+
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  try {
+    return new Date(dateString).toLocaleString();
+  } catch (error) {
+    return '';
+  }
 };
 
 const printReceipt = (order) => {
@@ -190,62 +370,172 @@ const ReceiptView = ({ order }) => {
 };
 
 export default function CashierDashboard() {
+  // States
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [mergeMode, setMergeMode] = useState(false);
   const [selectedParentOrder, setSelectedParentOrder] = useState(null);
+  const [orderToMerge, setOrderToMerge] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Chakra UI hooks
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const {
+    isOpen: isEditOpen,
+    onOpen: onEditOpen,
+    onClose: onEditClose
+  } = useDisclosure();
+  const {
+    isOpen: isMergeAlertOpen,
+    onOpen: onMergeAlertOpen,
+    onClose: onMergeAlertClose
+  } = useDisclosure();
+
+  const cancelRef = useRef();
   const toast = useToast();
   const ws = useRef(null);
 
+  // Helper Functions
+  const isInitialOrder = (order, allOrders) => {
+    const tableOrders = allOrders
+      .filter(o =>
+        o.table_number === order.table_number &&
+        o.status !== 'merged' &&
+        o.status !== 'cancelled'
+      )
+      .sort((a, b) => parseInt(a.id) - parseInt(b.id));
+    
+    return tableOrders[0]?.id === order.id;
+  };
+
+  const canBeMerged = (parentOrder, childOrder, allOrders) => {
+    const result = (
+      parentOrder.status === 'accepted' &&
+      childOrder.status === 'accepted' &&
+      parentOrder.table_number === childOrder.table_number &&
+      isInitialOrder(parentOrder, allOrders) &&
+      !isInitialOrder(childOrder, allOrders) &&
+      parentOrder.id !== childOrder.id
+    );
+    return result;
+  };
+
+  // WebSocket Setup
   useEffect(() => {
     fetchOrders();
-    setupWebSocket();
 
+    const setupWS = () => {
+      const wsClient = new WebSocket('ws://localhost:3001');
+
+      wsClient.onopen = () => {
+        console.log('WebSocket Connected');
+      };
+
+      wsClient.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'NEW_ORDER' ||
+              data.type === 'ORDER_STATUS_UPDATED' ||
+              data.type === 'ORDERS_MERGED') {
+            fetchOrders();
+          }
+        } catch (error) {
+          console.error('WebSocket message error:', error);
+        }
+      };
+
+      wsClient.onclose = () => {
+        console.log('WebSocket Disconnected, attempting to reconnect...');
+        setTimeout(setupWS, 3000);
+      };
+
+      wsClient.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      return wsClient;
+    };
+
+    const wsInstance = setupWS();
     return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
+      if (wsInstance) wsInstance.close();
     };
   }, []);
 
-  const setupWebSocket = () => {
-    ws.current = new WebSocket('ws://localhost:3001');
-
-    ws.current.onopen = () => {
-      console.log('WebSocket Connected');
-    };
-
-    ws.current.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('WebSocket Update:', data);
-        if (data.type === 'newOrder' || data.type === 'orderUpdate') {
-          fetchOrders();
-        }
-      } catch (error) {
-        console.error('WebSocket message error:', error);
-      }
-    };
-
-    ws.current.onclose = () => {
-      console.log('WebSocket Disconnected');
-      setTimeout(setupWebSocket, 3000);
-    };
-  };
-
+  // Order Management Functions
   const fetchOrders = async () => {
+    setIsLoading(true);
     try {
       const response = await fetch('http://localhost:3001/api/orders');
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
-      console.log('Fetched Orders:', data);
-      setOrders(data);
+
+      // Show only top-level orders (no parent_order_id)
+      const sortedOrders = data
+        .filter(order => !order.parent_order_id)
+        .sort((a, b) => parseInt(b.id) - parseInt(a.id));
+      
+      setOrders(sortedOrders);
     } catch (error) {
-      console.error('Failed to fetch orders:', error);
+      toast({
+        title: 'Error fetching orders',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMergeClick = (order) => {
+    setSelectedParentOrder(order);
+    setMergeMode(true);
+    toast({
+      title: 'Merge Mode Activated',
+      description: `Select orders from Table ${order.table_number} to merge into Order #${order.id}`,
+      status: 'info',
+      duration: 5000,
+    });
+  };
+
+  const handleMergeSelect = (orderToMerge) => {
+    setOrderToMerge(orderToMerge);
+    onMergeAlertOpen();
+  };
+
+  const handleMergeConfirm = async () => {
+    try {
+      const response = await fetch(
+        `http://localhost:3001/api/orders/${selectedParentOrder.id}/merge/${orderToMerge.id}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to merge orders');
+      }
+
+      toast({
+        title: 'Orders Merged Successfully',
+        description: `Order #${orderToMerge.id} has been merged into Order #${selectedParentOrder.id}`,
+        status: 'success',
+        duration: 3000,
+      });
+
+      setMergeMode(false);
+      setSelectedParentOrder(null);
+      setOrderToMerge(null);
+      onMergeAlertClose();
+      await fetchOrders();
+    } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to fetch orders',
+        description: error.message,
         status: 'error',
         duration: 3000,
       });
@@ -258,11 +548,7 @@ export default function CashierDashboard() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          status: 'paid',
-          table_number: order.table_number
-        })
+        }
       });
 
       if (!response.ok) throw new Error('Failed to process payment');
@@ -272,45 +558,30 @@ export default function CashierDashboard() {
 
       toast({
         title: 'Payment Complete',
-        description: 'Receipt has been printed and table is now available',
+        description: 'Receipt has been printed',
         status: 'success',
         duration: 3000,
       });
-
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to process payment: ' + error.message,
+        description: error.message,
         status: 'error',
         duration: 3000,
       });
     }
   };
 
-  const handleOrderConfirm = async (order) => {
+  const handleOrderAccept = async (order) => {
     try {
-      if (mergeMode && selectedParentOrder) {
-        const response = await fetch(
-          `http://localhost:3001/api/orders/${selectedParentOrder.id}/merge/${order.id}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          }
-        );
-        if (!response.ok) throw new Error('Failed to merge orders');
-        toast({
-          title: 'Orders Merged',
-          description: `Order #${order.id} merged into #${selectedParentOrder.id}`,
-          status: 'success',
-          duration: 3000,
-        });
-        setMergeMode(false);
-        setSelectedParentOrder(null);
-        await fetchOrders();
-      } else {
-        await updateOrderStatus(order.id, 'confirmed');
-        await fetchOrders();
-      }
+      await updateOrderStatus(order.id, 'accepted');
+      toast({
+        title: 'Order Accepted',
+        description: `Order #${order.id} has been accepted`,
+        status: 'success',
+        duration: 3000,
+      });
+      await fetchOrders();
     } catch (error) {
       toast({
         title: 'Error',
@@ -330,22 +601,9 @@ export default function CashierDashboard() {
       });
 
       if (!response.ok) throw new Error('Failed to update order status');
-
       await fetchOrders();
-
-      toast({
-        title: 'Order Updated',
-        description: `Order #${orderId} status updated to ${status}`,
-        status: 'success',
-        duration: 3000,
-      });
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to update order status',
-        status: 'error',
-        duration: 3000,
-      });
+      throw error;
     }
   };
 
@@ -354,24 +612,36 @@ export default function CashierDashboard() {
     onOpen();
   };
 
+  const handleEditOrder = (order) => {
+    setEditingOrder(order);
+    onEditOpen();
+  };
+
   return (
     <Container maxW="container.xl" py={8}>
       <VStack spacing={6} align="stretch">
+        {/* Header */}
         <HStack justify="space-between">
           <Heading>Cashier Dashboard</Heading>
           {mergeMode && (
-            <Button 
-              colorScheme="orange" 
-              onClick={() => {
-                setMergeMode(false);
-                setSelectedParentOrder(null);
-              }}
-            >
-              Cancel Merge Mode
-            </Button>
+            <HStack>
+              <Tooltip label="In merge mode, you can only merge subsequent orders into the initial order from the same table">
+                <InfoIcon color="blue.500" />
+              </Tooltip>
+              <Button
+                colorScheme="orange"
+                onClick={() => {
+                  setMergeMode(false);
+                  setSelectedParentOrder(null);
+                }}
+              >
+                Cancel Merge Mode
+              </Button>
+            </HStack>
           )}
         </HStack>
 
+        {/* Orders Table */}
         <Card>
           <CardBody>
             <Table variant="simple">
@@ -385,81 +655,72 @@ export default function CashierDashboard() {
                 </Tr>
               </Thead>
               <Tbody>
-                {orders.map((order) => (
-                  <Tr 
-                    key={order.id}
-                    bg={
-                      mergeMode && 
-                      selectedParentOrder?.table_number === order.table_number && 
-                      selectedParentOrder.id !== order.id
-                        ? 'blue.50'
-                        : undefined
-                    }
-                  >
-                    <Td>#{order.id}</Td>
-                    <Td>Table {order.table_number}</Td>
-                    <Td>${(parseFloat(order.total_amount) || 0).toFixed(2)}</Td>
-                    <Td>
-                      <StatusBadge 
-                        status={order.status || 'pending'} 
-                        isMerged={order.status === 'merged'} 
-                      />
-                    </Td>
-                    <Td>
-                      <Stack direction="row" spacing={2}>
-                        <Button
-                          size="sm"
-                          onClick={() => viewOrderDetails(order)}
-                        >
-                          View
-                        </Button>
+                {orders.map((order) => {
+                  const isInitial = isInitialOrder(order, orders);
+                  const isMergeable = mergeMode &&
+                    selectedParentOrder &&
+                    canBeMerged(selectedParentOrder, order, orders);
 
-                        {order.status === 'confirmed' && !order.parent_order_id && (
-                          <>
+                  return (
+                    <Tr
+                      key={order.id}
+                      bg={
+                        isMergeable
+                          ? 'green.50'
+                          : isInitial
+                          ? 'blue.50'
+                          : undefined
+                      }
+                      _hover={isMergeable ? { bg: 'green.100' } : undefined}
+                    >
+                      <Td>
+                        <VStack align="start" spacing={1}>
+                          <HStack>
+                            <Text>#{order.id}</Text>
+                            {isInitial && (
+                              <Tooltip label="Initial order for this table">
+                                <Badge colorScheme="blue">Initial</Badge>
+                              </Tooltip>
+                            )}
+                          </HStack>
+                          <Text fontSize="xs" color="gray.500">
+                            {formatDate(order.created_at) || 'No date available'}
+                          </Text>
+                        </VStack>
+                      </Td>
+                      <Td>Table {order.table_number}</Td>
+                      <Td>${(parseFloat(order.total_amount) || 0).toFixed(2)}</Td>
+                      <Td>
+                        <StatusBadge
+                          status={order.status || 'pending'}
+                          isMerged={order.status === 'merged'}
+                        />
+                      </Td>
+                      <Td>
+                        <Stack direction="row" spacing={2}>
+                          {/* View Details */}
+                          <Tooltip label="View order details">
                             <Button
                               size="sm"
-                              colorScheme={mergeMode ? 'gray' : 'blue'}
-                              onClick={() => {
-                                if (!mergeMode) {
-                                  setMergeMode(true);
-                                  setSelectedParentOrder(order);
-                                }
-                              }}
-                              disabled={mergeMode && selectedParentOrder?.id !== order.id}
+                              onClick={() => viewOrderDetails(order)}
                             >
-                              {mergeMode && selectedParentOrder?.id === order.id ? 'Select Order to Merge' : 'Merge Orders'}
+                              View
                             </Button>
-                            <Button
-                              size="sm"
-                              colorScheme="green"
-                              onClick={() => handlePayment(order)}
-                            >
-                              Paid
-                            </Button>
-                          </>
-                        )}
+                          </Tooltip>
 
-                        {order.status === 'pending' && !order.parent_order_id && (
-                          <>
-                            {mergeMode ? (
-                              selectedParentOrder && selectedParentOrder.table_number === order.table_number && (
+                          {/* If order is pending and not merged, let user Accept/Cancel */}
+                          {order.status === 'pending' && !order.parent_order_id && !mergeMode && (
+                            <>
+                              <Tooltip label="Accept the order">
                                 <Button
                                   size="sm"
-                                  colorScheme="green"
-                                  onClick={() => handleOrderConfirm(order)}
+                                  colorScheme="blue"
+                                  onClick={() => handleOrderAccept(order)}
                                 >
-                                  Merge into #{selectedParentOrder.id}
+                                  Accept
                                 </Button>
-                              )
-                            ) : (
-                              <>
-                                <Button
-                                  size="sm"
-                                  colorScheme="green"
-                                  onClick={() => handleOrderConfirm(order)}
-                                >
-                                  Confirm
-                                </Button>
+                              </Tooltip>
+                              <Tooltip label="Cancel the order">
                                 <Button
                                   size="sm"
                                   colorScheme="red"
@@ -467,20 +728,75 @@ export default function CashierDashboard() {
                                 >
                                   Cancel
                                 </Button>
-                              </>
-                            )}
-                          </>
-                        )}
-                      </Stack>
-                    </Td>
-                  </Tr>
-                ))}
+                              </Tooltip>
+                            </>
+                          )}
+
+                          {/* If order is accepted (and not merged), show relevant actions */}
+                          {order.status === 'accepted' && !order.parent_order_id && (
+                            <>
+                              <Tooltip label="Edit order items">
+                                <Button
+                                  size="sm"
+                                  colorScheme="teal"
+                                  onClick={() => handleEditOrder(order)}
+                                >
+                                  Edit
+                                </Button>
+                              </Tooltip>
+
+                              {/* If this is the initial order, allow enabling Merge Mode */}
+                              {isInitial && (
+                                <Tooltip label="Merge additional orders from this table">
+                                  <Button
+                                    size="sm"
+                                    colorScheme={mergeMode ? 'gray' : 'blue'}
+                                    onClick={() => handleMergeClick(order)}
+                                    isDisabled={mergeMode && selectedParentOrder?.id !== order.id}
+                                  >
+                                    {mergeMode && selectedParentOrder?.id === order.id
+                                      ? 'Select Order to Merge'
+                                      : 'Merge Orders'}
+                                  </Button>
+                                </Tooltip>
+                              )}
+
+                              <Tooltip label="Mark as paid and print receipt">
+                                <Button
+                                  size="sm"
+                                  colorScheme="green"
+                                  onClick={() => handlePayment(order)}
+                                >
+                                  Paid
+                                </Button>
+                              </Tooltip>
+                            </>
+                          )}
+
+                          {/* If we're in merge mode and this order can be merged, show "Select to Merge" */}
+                          {mergeMode && isMergeable && (
+                            <Tooltip label={`Merge into Order #${selectedParentOrder?.id}`}>
+                              <Button
+                                size="sm"
+                                colorScheme="blue"
+                                onClick={() => handleMergeSelect(order)}
+                              >
+                                Select to Merge
+                              </Button>
+                            </Tooltip>
+                          )}
+                        </Stack>
+                      </Td>
+                    </Tr>
+                  );
+                })}
               </Tbody>
             </Table>
           </CardBody>
         </Card>
       </VStack>
 
+      {/* View Receipt Modal */}
       <Modal isOpen={isOpen} onClose={onClose} size="md">
         <ModalOverlay />
         <ModalContent>
@@ -491,6 +807,65 @@ export default function CashierDashboard() {
           </ModalBody>
         </ModalContent>
       </Modal>
+
+      {/* Edit Order Modal */}
+      <EditOrderModal
+        isOpen={isEditOpen}
+        onClose={onEditClose}
+        order={editingOrder}
+        onSave={(updatedOrder) => {
+          // If updatedOrder is null => the order was fully removed
+          if (!updatedOrder) {
+            // Remove from the local `orders` state
+            setOrders((prev) => prev.filter((o) => o.id !== editingOrder.id));
+
+            // If we were viewing the same order, clear it
+            if (selectedOrder && selectedOrder.id === editingOrder.id) {
+              setSelectedOrder(null);
+            }
+            return;
+          }
+
+          // If we got an actual updated order, replace it in state
+          setOrders((prev) =>
+            prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
+          );
+
+          // If user was viewing the same order, update it
+          if (selectedOrder && selectedOrder.id === updatedOrder.id) {
+            setSelectedOrder(updatedOrder);
+          }
+        }}
+      />
+
+      {/* Merge Alert */}
+      <AlertDialog
+        isOpen={isMergeAlertOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={onMergeAlertClose}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Confirm Order Merge
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              Are you sure you want to merge Order #{orderToMerge?.id} into Order #{selectedParentOrder?.id}?
+              This action cannot be undone.
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={onMergeAlertClose}>
+                Cancel
+              </Button>
+              <Button colorScheme="blue" onClick={handleMergeConfirm} ml={3}>
+                Confirm Merge
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
     </Container>
   );
 }

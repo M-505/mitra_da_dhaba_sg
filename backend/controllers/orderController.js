@@ -1,5 +1,6 @@
+// controllers/orderController.js
+
 const orderModel = require('../models/orderModel');
-const { validationResult } = require('express-validator');
 const db = require('../config/database');
 
 // Helper function for WebSocket broadcasting
@@ -13,6 +14,7 @@ const broadcastToClients = (data) => {
   }
 };
 
+// GET all orders
 exports.getAllOrders = async (req, res, next) => {
   try {
     const orders = await orderModel.getAllOrders();
@@ -22,6 +24,7 @@ exports.getAllOrders = async (req, res, next) => {
   }
 };
 
+// GET a single order by ID
 exports.getOrderById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -35,6 +38,7 @@ exports.getOrderById = async (req, res, next) => {
   }
 };
 
+// CREATE a new order
 exports.createOrder = async (req, res) => {
   const conn = await db.getConnection();
   
@@ -50,13 +54,7 @@ exports.createOrder = async (req, res) => {
       return sum + (price * quantity);
     }, 0);
 
-    console.log('Order details:', {
-      table_number,
-      total_amount,
-      items
-    });
-
-    // Create the order
+    // Insert into 'orders'
     const [orderResult] = await conn.query(
       `INSERT INTO orders (table_number, status, total_amount) 
        VALUES (?, ?, ?)`,
@@ -94,8 +92,8 @@ exports.createOrder = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      orderId: orderId,
-      total_amount: total_amount,
+      orderId,
+      total_amount,
       message: 'Order created successfully'
     });
 
@@ -112,18 +110,20 @@ exports.createOrder = async (req, res) => {
   }
 };
 
+// UPDATE order status
 exports.updateOrderStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+
     const updatedOrder = await orderModel.updateOrderStatus(id, status);
-    
+
     if (updatedOrder) {
       // Broadcast order update
       broadcastToClients({
         type: 'ORDER_STATUS_UPDATED',
         orderId: id,
-        status: status,
+        status,
         order: updatedOrder
       });
       
@@ -136,42 +136,12 @@ exports.updateOrderStatus = async (req, res, next) => {
   }
 };
 
+// MERGE orders
+// - No "pending only" check here; let model handle allowed status combos
 exports.mergeOrders = async (req, res, next) => {
   try {
     const { parentId, childId } = req.params;
-    
-    // Log the incoming request
     console.log('Attempting to merge orders:', { parentId, childId });
-
-    // First check orders status
-    const [orders] = await db.query(
-      'SELECT id, status, table_number FROM orders WHERE id IN (?, ?)',
-      [parentId, childId]
-    );
-
-    console.log('Found orders:', orders);
-
-    if (orders.length !== 2) {
-      return res.status(404).json({
-        success: false,
-        message: 'One or both orders not found'
-      });
-    }
-
-    const parentOrder = orders.find(o => o.id === parseInt(parentId));
-    const childOrder = orders.find(o => o.id === parseInt(childId));
-
-    console.log('Parent order:', parentOrder);
-    console.log('Child order:', childOrder);
-
-    if (parentOrder.status !== 'pending' || childOrder.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: 'Can only merge pending orders',
-        parentStatus: parentOrder.status,
-        childStatus: childOrder.status
-      });
-    }
 
     const mergedOrder = await orderModel.mergeOrders(parentId, childId);
     
@@ -199,23 +169,27 @@ exports.mergeOrders = async (req, res, next) => {
   }
 };
 
+// UPDATE an order (including items/total)
 exports.updateOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const updateData = req.body; // items, total_amount, etc.
+
+    // Call model to update order & items
     const updatedOrder = await orderModel.updateOrder(id, updateData);
-    
+
     if (updatedOrder) {
-      // Broadcast order update
+      // Broadcast to WebSocket clients
       broadcastToClients({
         type: 'ORDER_UPDATED',
         orderId: id,
         order: updatedOrder
       });
-      
-      res.json(updatedOrder);
+
+      // Return the updated order as JSON
+      return res.json(updatedOrder);
     } else {
-      res.status(404).json({ message: 'Order not found' });
+      return res.status(404).json({ message: 'Order not found' });
     }
   } catch (err) {
     next(err);
