@@ -126,7 +126,7 @@ const CartItem = ({ item, updateQuantity, removeFromCart, updateNote }) => (
 export default function Home() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [categories, setCategories] = useState([]);
-  const [activeCategory, setActiveCategory] = useState('');
+  const [activeCategory, setActiveCategory] = useState(null);
   const [menuItems, setMenuItems] = useState({});
   const [cart, setCart] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -180,35 +180,41 @@ export default function Home() {
   };
 }, []);
 
-  const fetchMenuItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch('http://localhost:3001/api/menu');
-      const data = await res.json();
-      const categoryMap = {};
-      data.forEach((item) => {
-        item.price = parseFloat(item.price || 0);
-        if (item.is_available) {
-          if (!categoryMap[item.category_id]) {
-            categoryMap[item.category_id] = [];
-          }
-          categoryMap[item.category_id].push(item);
+const fetchMenuItems = async () => {
+  setIsLoading(true);
+  try {
+    const [menuRes, categoriesRes] = await Promise.all([
+      fetch('http://localhost:3001/api/menu'),
+      fetch('http://localhost:3001/api/categories')
+    ]);
+    
+    const menuData = await menuRes.json();
+    const categoriesData = await categoriesRes.json();
+    
+    const categoryMap = {};
+    menuData.forEach((item) => {
+      item.price = parseFloat(item.price || 0);
+      if (item.is_available) {
+        if (!categoryMap[item.category_id]) {
+          categoryMap[item.category_id] = [];
         }
-      });
-      setCategories(Object.keys(categoryMap));
-      setMenuItems(categoryMap);
-      setActiveCategory(Object.keys(categoryMap)[0]);
-    } catch (err) {
-      toast({
-        title: 'Error fetching menu',
-        description: 'Please try again later',
-        status: 'error',
-        duration: 3000,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        categoryMap[item.category_id].push(item);
+      }
+    });
+
+    setCategories(categoriesData);
+    setMenuItems(categoryMap);
+    setActiveCategory(categoriesData[0]?.id);
+  } catch (err) {
+    toast({
+      title: 'Error fetching menu',
+      status: 'error',
+      duration: 3000,
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const addToCart = (item) => {
     setCart((prevCart) => {
@@ -387,13 +393,13 @@ const filteredMenuItems = searchTerm
             </Button>
           </HStack>
 
-          <Tabs onChange={(index) => setActiveCategory(categories[index])} isFitted variant="enclosed">
-            <TabList overflowX="auto" whiteSpace="nowrap">
-              {categories.map((category) => (
-                <Tab key={category}>{category.replace('_', ' ').toUpperCase()}</Tab>
+          <Tabs onChange={(index) => setActiveCategory(categories[index].id)} isFitted variant="enclosed">
+          <TabList overflowX="auto" whiteSpace="nowrap">
+          {categories.map((category) => (
+          <Tab key={category.id}>{category.name}</Tab>
               ))}
-            </TabList>
-          </Tabs>
+        </TabList>
+        </Tabs>
 
           <MotionSimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
             <AnimatePresence>
@@ -451,7 +457,7 @@ const filteredMenuItems = searchTerm
                         {item.description}
                       </Text>
                       <Text color="blue.600" fontSize="xl">
-                        ${item.price.toFixed(2)}
+                      ${parseFloat(item.price || 0).toFixed(2)}
                       </Text>
                       <Button colorScheme="orange" onClick={() => addToCart(item)}>
                         Add +
