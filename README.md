@@ -6,8 +6,6 @@ This Food Ordering System is a modern web application designed to simplify the p
 
 Features
 
-User Authentication: Secure sign-up and login for both customers and restaurant admins.
-
 Menu Management: Dynamic menu creation and updates by restaurant owners.
 
 Order Processing: Real-time order placement and status tracking.
